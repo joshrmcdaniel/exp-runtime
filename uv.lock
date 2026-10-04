@@ -12,39 +12,6 @@ wheels = [
 ]
 
 [[package]]
-name = "buildozer"
-version = "1.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cython" },
-    { name = "packaging" },
-    { name = "pexpect" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/49/97973d2eb1225f67dbaf22bc5d2100cd333a66a100d78ebff6d4acc5a50a/buildozer-1.6.0.tar.gz", hash = "sha256:ad33ae18c3476ae131743f9b5df124936e64c199722e54a15838c952b9115381", size = 174131, upload-time = "2026-05-12T11:30:36.829Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/1c/722a82c999a500e73fba6a7d1ef40e770db2b6f68947ef0f92ff30550812/buildozer-1.6.0-py3-none-any.whl", hash = "sha256:adf30b983dfc6881a10f6a1fc13b09056a92e526519db7ebbd3d008a788cbde3", size = 92684, upload-time = "2026-05-12T11:30:35.32Z" },
-]
-
-[[package]]
-name = "cython"
-version = "0.29.37"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2a/97/8cc3fe7c6de4796921236a64d00ca8a95565772e57f0d3caae68d880b592/Cython-0.29.37.tar.gz", hash = "sha256:f813d4a6dd94adee5d4ff266191d1d95bf6d4164a4facc535422c021b2504cfb", size = 2099621, upload-time = "2023-12-19T09:22:39.397Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/2e/9116c533bd9fd36db3faa50d60e95305b6a6f1ed4c4d2abb214b6db78ed7/Cython-0.29.37-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:4658499a41255431f6bbdca7e634e9c8d3a4c190bf24b4aa1646dac751d3da4d", size = 1807840, upload-time = "2023-12-19T09:23:42.958Z" },
-    { url = "https://files.pythonhosted.org/packages/5b/b7/6e35bbbf253ff6c383eec57baab1c6814107b2b9caf26b10e9c25014bb1e/Cython-0.29.37-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:12192ab269e7185720f2d2f8894587bf1da4276db1b9b869e4622a093f18cae6", size = 1910402, upload-time = "2023-12-19T09:23:45.542Z" },
-    { url = "https://files.pythonhosted.org/packages/20/88/af83962f9134a92949b8e780205d824be8aab704fdb711f379d434f3e9af/Cython-0.29.37-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_24_i686.whl", hash = "sha256:9450e0766ab65947f8a2a36f9e59079fc879c3807ec936c61725a48c97741a52", size = 1911975, upload-time = "2023-12-19T09:23:48.168Z" },
-    { url = "https://files.pythonhosted.org/packages/45/2e/9c904296381b3afc6cd8b16f3c4cb908265c969b807cddf0b65c07449758/Cython-0.29.37-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:177481b0a7e003e5c49e2bf0dda1d6fe610c239f17642a5da9f18c2ad0c5f6b6", size = 2006645, upload-time = "2023-12-19T09:23:51.413Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/ba/eddee5c048c621607023f7438e27f9e559d4c34149d758049d50150c2b2f/Cython-0.29.37-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:b048354fd380278f2fa096e7526973beb6e0491a9d44d7e4e29df52612d25776", size = 1808964, upload-time = "2023-12-19T09:23:54.059Z" },
-    { url = "https://files.pythonhosted.org/packages/22/99/2b01e0164ff1ea592e3515e473517674780f0f3d49f48af30324b85ac94d/Cython-0.29.37-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:ea6d208be1906c5df25b674777d5905c6d8e9ef0b201b830849e0729ba08caba", size = 1910527, upload-time = "2023-12-19T09:23:57.538Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/2f/b3f3694aa2ea48a39c2ef1b218b6a25f4b0d62836495f9a65495f060969a/Cython-0.29.37-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_24_i686.whl", hash = "sha256:af03854571738307a5f30cc6b724081d72db12f907699e7fdfc04c12c839158e", size = 1910933, upload-time = "2023-12-19T09:24:00.867Z" },
-    { url = "https://files.pythonhosted.org/packages/3d/7f/f1a8ec07e0e7e2af84940c0155e6f8bb383671da34a785f441a19f2cff4e/Cython-0.29.37-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:c33508ede9172a6f6f99d5a6dadc7fee23c840423b411ef8b5a403c04e530297", size = 2006522, upload-time = "2023-12-19T09:24:04.4Z" },
-    { url = "https://files.pythonhosted.org/packages/c9/aa/99a0eac01136c0c75feb3210d107c49f93d49d5cb97f19e99318b9ecefdd/Cython-0.29.37-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e8af5975ecfae254d8c0051204fca995dda8f93cf9f0bbf7571e3cda2b0cef4d", size = 1951525, upload-time = "2023-12-19T09:57:00.464Z" },
-    { url = "https://files.pythonhosted.org/packages/14/5f/f5efba4409474892d650ba7e57349afa5d4c41d06f5ba3356c32891c75a6/Cython-0.29.37-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:29415d8eb2fdc1ea518ca4810c50a2d062b387d4c9fbcfb3352346e93db22c6d", size = 1950936, upload-time = "2023-12-19T09:24:07.949Z" },
-    { url = "https://files.pythonhosted.org/packages/7e/26/9d8de10005fedb1eceabe713348d43bae1dbab1786042ca0751a2e2b0f8c/Cython-0.29.37-py2.py3-none-any.whl", hash = "sha256:95f1d6a83ef2729e67b3fa7318c829ce5b07ac64c084cd6af11c228e0364662c", size = 989503, upload-time = "2023-12-19T09:22:32.861Z" },
-]
-
-[[package]]
 name = "macholib"
 version = "1.16.4"
 source = { registry = "https://pypi.org/simple" }
@@ -72,18 +39,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/03/4f/2750f7f6f025a1507cd3b7218691671eecfd0bbebebe8b39aa0fe1d360b8/pefile-2024.8.26.tar.gz", hash = "sha256:3ff6c5d8b43e8c37bb6e6dd5085658d658a7a0bdcd20b6a07b1fcfc1c4e9d632", size = 76008, upload-time = "2024-08-26T20:58:38.155Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/16/12b82f791c7f50ddec566873d5bdd245baa1491bac11d15ffb98aecc8f8b/pefile-2024.8.26-py3-none-any.whl", hash = "sha256:76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f", size = 74766, upload-time = "2024-08-26T21:01:02.632Z" },
-]
-
-[[package]]
-name = "pexpect"
-version = "4.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "ptyprocess" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/c3/059298687310d527a58bb01f3b1965787ee3b40dce76752eda8b44e9a2c5/pexpect-4.9.0-py2.py3-none-any.whl", hash = "sha256:7236d1e080e4936be2dc3e326cec0af72acf9212a7e1d060210e70a47e253523", size = 63772, upload-time = "2023-11-25T06:56:14.81Z" },
 ]
 
 [[package]]
@@ -178,15 +133,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bf/20/22fe9384b7949e25fb1293bcfc84fb82590ff4ea6b37c95b24d26d793d86/pillow-12.3.0-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fbd139c8447d25dd750ab79ee274cc5e1fe80fc56340ab10b18a195e1b6eca3e", size = 5237776, upload-time = "2026-07-01T11:56:30.263Z" },
     { url = "https://files.pythonhosted.org/packages/08/14/f6ba68107680ffa74b39985f3f30884e41318fbc4250caa423c79b4788bb/pillow-12.3.0-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e7e480451b9fa137494bccd3a7d69adbe8ac65a87d97be61e11f1b1050a5bac3", size = 5860358, upload-time = "2026-07-01T11:56:32.68Z" },
     { url = "https://files.pythonhosted.org/packages/36/54/0169bc772ec491108b62f644f8ecf1fe5d8ae5ebafde2ee2142210166903/pillow-12.3.0-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:04f01d28a6aaff387bf842a13be313df23ba0597a44f1a976c9feb3c6ff4711a", size = 7231786, upload-time = "2026-07-01T11:56:35.046Z" },
-]
-
-[[package]]
-name = "ptyprocess"
-version = "0.7.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/20/e5/16ff212c1e452235a90aeb09066144d0c5a6a8c0834397e03f5224495c4e/ptyprocess-0.7.0.tar.gz", hash = "sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220", size = 70762, upload-time = "2020-12-28T15:15:30.155Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/a6/858897256d0deac81a172289110f31629fc4cee19b6f01283303e18c8db3/ptyprocess-0.7.0-py2.py3-none-any.whl", hash = "sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35", size = 13993, upload-time = "2020-12-28T15:15:28.35Z" },
 ]
 
 [[package]]
@@ -303,7 +249,7 @@ wheels = [
 
 [[package]]
 name = "shs-runtime"
-version = "0.1.1"
+version = "0.1.3"
 source = { editable = "." }
 dependencies = [
     { name = "pillow" },
@@ -311,7 +257,6 @@ dependencies = [
 
 [package.optional-dependencies]
 build = [
-    { name = "buildozer" },
     { name = "pygame-ce" },
     { name = "pyinstaller" },
 ]
@@ -321,7 +266,6 @@ desktop = [
 
 [package.metadata]
 requires-dist = [
-    { name = "buildozer", marker = "extra == 'build'", specifier = ">=1.6.0,<2" },
     { name = "pillow", specifier = ">=10" },
     { name = "pygame-ce", marker = "extra == 'build'", specifier = ">=2.5.7,<3" },
     { name = "pygame-ce", marker = "extra == 'desktop'", specifier = ">=2.5.7,<3" },
