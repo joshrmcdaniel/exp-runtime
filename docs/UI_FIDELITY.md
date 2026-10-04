@@ -230,7 +230,7 @@ placing a fresh Mr. Russell label 47.25 logical pixels too low.
 `Session` advances name-font state once per dialogue. Rendering and page turns
 use a copy of the state before that dialogue, so their frequency cannot change
 future placement. Save version 10 retains both banks and validates the current
-layout against them; see [RUNTIME.md](RUNTIME.md#runtime-save-schema-version-12).
+layout against them; see [RUNTIME.md](RUNTIME.md#runtime-save-schema-version-13).
 
 **Compatibility correction, not verified native behavior:** applying these
 native rules with the current imported-font renderer still permits overlaps.
@@ -608,6 +608,11 @@ Service 33's standalone Instructions/message panel now uses native layouts
 24/15/25, blue skin, APK bitmap fonts, continuation label and footer. Its
 one-second reading gate, raw-text contract and remaining presentation limits
 are documented in [STORY_SERVICES.md](STORY_SERVICES.md#message-panel-service-33).
+
+Offline surveys reuse this message panel for the local thank-you receipt.
+That presentation is an explicit compatibility choice; Android 1.0.9's survey
+upload path is disabled. The original questions and remaining story still
+execute normally. See the [survey contract](STORY_SERVICES.md#offline-surveys-service-9).
 
 `fonts.py` implements the supported descriptor schema, native integer parsing,
 line fitting, source offsets, nominal line metrics, per-line indents, glyph

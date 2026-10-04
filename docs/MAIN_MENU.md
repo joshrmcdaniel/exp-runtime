@@ -187,7 +187,7 @@ and reports the write error. See the [exit contract](STORY_SERVICES.md#episode-e
 | File, relative to the library | Schema / behavior |
 | --- | --- |
 | `player.json` | `{version:1, selected:SHA256, music:bool, sound:bool, order:"episode"\|"title"}`; old files default to episode order |
-| `saves/<episode-sha>.shs-save.json` | Existing manual F5/F9 slot, [runtime save schema](RUNTIME.md#runtime-save-schema-version-12) |
+| `saves/<episode-sha>.shs-save.json` | Existing manual F5/F9 slot, [runtime save schema](RUNTIME.md#runtime-save-schema-version-13) |
 | `saves/<episode-sha>.shs-auto.json` | Automatic checkpoint on menu return and application exit, same schema |
 
 Preferences and saves use temporary files plus atomic replacement. Resume after

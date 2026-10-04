@@ -16,6 +16,7 @@ from .relationships import RelationshipAnimation, RelationshipChange
 from .speaker_names import SpeakerNames
 from .title_screen import TitleScreen
 from .loading import loading_waits
+from .survey import RESPONSE_STEPS, SURVEY_TEXT, SURVEY_TITLE, is_survey, script_response
 from .text_input import CURSOR_FONT, NAME_FONT, validate_name
 from .minigames import NativeRandom, RAND48_INITIAL, RAND48_MASK
 from .vm import KiwiVM, StopKind, VMError, VMStop, signed16
@@ -231,13 +232,16 @@ class Session:
             self.engine.dynamic_strings[0] = self.engine.last_input = value
             self.vm.resume(0x7ff5)  # FUN_000d3f5c
             self.pending = None
-        elif action.name == 'message_panel':
+        elif action.name in ('message_panel', 'survey_confirmation'):
             if value is not None:
                 raise ValueError('This screen expects an acknowledgement')
             if not self.engine.message_panel.ready:
                 return action  # 000abb3c ignores early input; it is not queued.
-            self._complete_panel()
-            self.engine.message_panel = None
+            if action.name == 'survey_confirmation':
+                self._complete_survey(action)
+            else:
+                self._complete_panel()
+                self.engine.message_panel = None
         elif action.name == 'presentation':
             if value is not None:
                 raise ValueError('This screen expects an acknowledgement')
@@ -268,6 +272,23 @@ class Session:
         else:
             raise VMError(f'Cannot answer {action.name}; its native contract is not implemented')
         return self.advance()
+
+    def _complete_survey(self, action):
+        response = script_response(self.vm, self.engine.read_text)
+        if response is None or response.pc != action.details['response_pc']:
+            raise VMError('Survey response continuation changed while awaiting acknowledgement')
+        self.vm.resume(0)  # Local status: not uploaded; leave aggregate memory alone.
+        request = self.vm.run(RESPONSE_STEPS)
+        if request != response:
+            raise VMError('Survey response did not match its verified continuation')
+        # The player has already acknowledged the replacement for this exact
+        # connection-error notice. Execute its real frame and callback once,
+        # preserving speaker/panel state and the queued transition's effects.
+        self.pending = self.engine.dispatch(self.vm, resource_exists=self.resources.exists,
+                                            dialogue_override=SURVEY_TEXT)
+        self._prepare_dialogue(new_name=True)
+        self._complete_panel()
+        self.engine.message_panel = None
 
     def _complete_panel(self):
         # 000ab8b8 / 0007efe8, shared by title, message and dialogue panels. A queued
@@ -322,7 +343,7 @@ class Session:
         if self.pending and self.pending.name == 'character_picker':
             self.engine.character_picker.tick(elapsed_ms)
             return self.pending
-        if self.pending and self.pending.name == 'message_panel':
+        if self.pending and self.pending.name in ('message_panel', 'survey_confirmation'):
             self.engine.message_panel.tick(elapsed_ms)
             return self.pending  # Reading time never acknowledges the panel.
         if self.pending and self.pending.name == 'presentation':
@@ -366,7 +387,7 @@ class Session:
         return self.advance()
 
     def snapshot(self) -> dict:
-        return dict(format='shs-runtime-save', version=12,
+        return dict(format='shs-runtime-save', version=13,
                     content=self.resources.identity, scene=self.scene,
                     script_sha256=digest(self.vm.program.to_bytes()),
                     vm=self.vm.snapshot(), engine=asdict(self.engine),
@@ -377,7 +398,7 @@ class Session:
     @classmethod
     def from_snapshot(cls, resources: EpisodeResources, state: dict):
         try:
-            if state['format'] != 'shs-runtime-save' or state['version'] not in range(1, 13):
+            if state['format'] != 'shs-runtime-save' or state['version'] not in range(1, 14):
                 raise SaveError('Unsupported save format or version')
             legacy = state['version'] == 1
             if state['version'] < 11:
@@ -507,7 +528,7 @@ class Session:
                     raise SaveError('Pending screen does not match the VM stop')
                 allowed = {'choice': (1, 4), 'character_picker': (78,), 'word_game': (71,), 'word_grid': (96,), 'football': (94,), 'dialogue': (13, 65, 76), 'text_input': (17, 40),
                            'presentation': (8,), 'loading': (91,), 'message_panel': (33,),
-                           'episode_exit': (7, 63),
+                           'survey_confirmation': (9,), 'episode_exit': (7, 63),
                            'finished': (None,), 'vm_pause': (None,)}
                 if name != 'unhandled_yield' and (name not in allowed or request.yield_id not in allowed[name]):
                     raise SaveError('Pending screen does not match its native service')
@@ -518,6 +539,14 @@ class Session:
                     closed.close_episode()
                     if state['version'] < 12 or details or engine != closed:
                         raise SaveError('Episode exit does not match its cleared scene')
+                elif name == 'survey_confirmation':
+                    panel = engine.message_panel
+                    response = script_response(session.vm, engine.read_text)
+                    if (state['version'] < 13 or not is_survey(request.args) or response is None
+                            or details != dict(response_pc=response.pc)
+                            or type(details['response_pc']) is not int or panel is None
+                            or (panel.title, panel.text, panel.argument) != (SURVEY_TITLE, SURVEY_TEXT, 0)):
+                        raise SaveError('Survey confirmation does not match its submission frame')
                 elif name == 'loading':
                     expected_details = {}
                     if (engine.loading and not engine.loading.blocking and len(request.args) != 1
@@ -648,7 +677,8 @@ class Session:
                 raise SaveError('Character selection does not match its pending screen')
             if (engine.loading is not None) != bool(session.pending and session.pending.name == 'loading'):
                 raise SaveError('Loading state does not match its pending screen')
-            if (engine.message_panel is not None) != bool(session.pending and session.pending.name == 'message_panel'):
+            if (engine.message_panel is not None) != bool(session.pending and session.pending.name in
+                                                         ('message_panel', 'survey_confirmation')):
                 raise SaveError('Message panel does not match its pending screen')
             if (engine.title_screen is not None) != bool(session.pending and session.pending.name == 'presentation'):
                 raise SaveError('Title screen does not match its pending screen')
@@ -675,12 +705,14 @@ class Session:
                 session.pending = engine.dispatch(session.vm, resource_exists=resources.exists)
                 engine.dialogue_animation = None
             if (session.pending and session.pending.name == 'unhandled_yield'
-                    and session.pending.request.yield_id in (4, 7, 33, 39, 63, 70, 76)):
+                    and session.pending.request.yield_id in (4, 7, 9, 33, 39, 63, 70, 76)):
                 # Dispatch only the newly supported call from its validated
                 # frame, without replaying previous input or random draws.
                 if session.pending.request.yield_id == 4:
                     if len(session.pending.request.args) != 1 or engine.choice_builder is None:
                         raise SaveError('Choice stop is missing its builder or shuffle argument')
+                if session.pending.request.yield_id == 9 and len(session.pending.request.args) < 2:
+                    raise SaveError('Survey stop is missing its submission arguments')
                 if session.pending.request.yield_id in (70, 76) and engine.panel.presentation_mode:
                     # Unsupported stops discarded their animation, but retained
                     # the visible panel. Recover its outgoing portrait identity

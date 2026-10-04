@@ -256,11 +256,12 @@ class Desktop:
             self.screen_token, self.scroll = token, 0
         self.canvas.fill((14, 20, 32))
         details = action.details if action else {}
-        if action and action.name in ('word_grid', 'football', 'character_picker', 'loading', 'message_panel', 'presentation', 'text_input') and not self.error:
+        if action and action.name in ('word_grid', 'football', 'character_picker', 'loading', 'message_panel', 'survey_confirmation', 'presentation', 'text_input') and not self.error:
             try:
                 renderer = {'word_grid': self.grid_renderer, 'football': self.football_renderer,
                             'character_picker': self.picker_renderer, 'loading': self.loading_renderer,
                             'message_panel': self.message_renderer, 'presentation': self.title_renderer,
+                            'survey_confirmation': self.message_renderer,
                             'text_input': self.input_renderer}[action.name]
                 options = (dict(error=self.input_error,
                                 cursor_visible=self.text_input_started and pygame.time.get_ticks() % 1000 < 500)
@@ -488,7 +489,7 @@ class Desktop:
                 self._attempt(lambda: self.session.answer(command[1] if kind == 'choose' else None))
             if kind == 'choose' and action and action.name in ('choice', 'word_game'):
                 self._attempt(lambda: self.session.answer(command[1]))
-            elif kind == 'continue' and action and action.name in ('presentation', 'dialogue', 'message_panel'):
+            elif kind == 'continue' and action and action.name in ('presentation', 'dialogue', 'message_panel', 'survey_confirmation'):
                 self._attempt(self.session.answer)
             elif action and action.name == 'football' and kind in ('continue', 'choose'):
                 self._attempt(lambda: self.session.answer(command[1] if kind == 'choose' else None))

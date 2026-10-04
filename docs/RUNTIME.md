@@ -262,14 +262,14 @@ IDs take priority, including its scripts in the 25000 range. Playback starts at
 last scheduled script. Registers and complete stack backing survive that load,
 while data and PC/SP/FP reset according to the core VM contract.
 
-## Runtime save schema, version 12
+## Runtime save schema, version 13
 
 This is a new format for the reimplementation. No pickle, object deserialization,
 or original executable code is used. JSON fields are:
 
 | Field | Contract |
 | --- | --- |
-| `format`, `version` | `"shs-runtime-save"`, `12` |
+| `format`, `version` | `"shs-runtime-save"`, `13` |
 | `content` | `profile`, `apk_sha256`, `episode_sha256`; must exactly match loaded content |
 | `scene` | Unsigned current script resource ID |
 | `script_sha256` | Hash of the losslessly encoded current program |
@@ -437,6 +437,25 @@ A subsequent play starts fresh; explicit manual Load remains available.
 Terminal scene checks, persistence behavior and the native/reset-memory
 boundary are specified in [STORY_SERVICES.md](STORY_SERVICES.md#save-schema-version-12).
 
+Version 13 adds `survey_confirmation` for supported service-9 submissions.
+The pending details contain only the verified `response_pc`; the original
+submission frame remains suspended. The existing `engine.message_panel`
+stores the local thank-you receipt and its active reading time (0–1000 ms).
+Loading validates the upload type, exact receipt, response PC and original
+script's not-uploaded branch without changing live VM state. Older unsupported
+service-9 saves enter this confirmation without replaying questions or sending
+answers. Acknowledgement executes the verified branch and its dialogue callback
+once, then continues the remaining story. It does not mark the episode ended;
+only the script's original services 7/63 do that. See the
+[offline survey contract](STORY_SERVICES.md#offline-surveys-service-9).
+
+Saves stopped at unsupported service 4 now validate the retained choice builder
+and shuffle argument, then perform the native shuffle once using the saved
+game random stream. No preceding script input or random draws are replayed.
+An already displayed choice keeps its saved order, return mapping and timer
+without reshuffling. No fields or save version change; see the
+[choice contract](ENGINE_ABI.md#46-services-14-ordinary-choices).
+
 A save retained at unsupported service 39 now completes the recovered panel
 close through its validated VM frame and follows the saved script queue to
 the next stop. This also applies to version-6 saves; no schema fields change.
@@ -487,7 +506,12 @@ An all-first-choice route with ten positive word selections reaches service 91
 at PC 60 in scene 25004. This APK-bundled call has zero arguments and reads a
 retained wait value of 407. The imported `SHS_The_New_Girl.exp` passes 1 at PC 61.
 Both loading gates preserve the original frame and timer across saves and
-continue into the word-grid game. Separate local tests
+continue into the word-grid game. A route choosing Algebra when available and
+spending free time alone later reaches the shuffled service-4 choice in scene
+25005: PC 1465 in the bundled episode and 1478 in the imported episode.
+Both recover old unsupported saves without replaying the earlier route;
+each displayed option then reaches its original dialogue and mapped result.
+Separate local tests
 exercise the original driving-grid frame in script 25003 and the football
 frame in **Big Man On Campus** without adding production script skips.
 

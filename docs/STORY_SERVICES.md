@@ -707,6 +707,81 @@ random states, pending frames and page/reveal progress. Older unsupported
 service-78 stops are initialized from their original arguments. Renderers do
 not write VM results or advance clocks. Pausing/focus loss stops active time.
 
+## Offline surveys (service 9)
+
+```text
+arguments : poll ID:s16, upload type:s16, remaining opaque words
+supported : upload type 2 and the verified not-uploaded response below
+questions : original service-1 choices, including the option to decline
+receipt   : Survey / Thanks for taking the survey!
+input     : 1000 ms active reading time, then acknowledgement
+result    : 0 (not uploaded); no aggregate result or UI result-cell write
+resume    : execute the original remaining story; no forced episode exit
+```
+
+This is an owner-requested offline compatibility feature, not a recovered
+Android upload callback. Android 1.0.9 disables this path: dispatcher
+`0009fe3c`'s service-1 branch exits through `0007e614` when the description
+contains the optional-survey invitation. Service 9 itself calls `0009f0cc`,
+which reads only the first two frame words, constructs `pollID=...&upType=...`,
+discards that temporary string and returns `EMPTY`. The dispatcher calls
+panel helper `000a7cdc` and sender `0007b448`, then sets the host wait flag.
+The sender is an empty function; this binary provides no submission response.
+The runtime deliberately permits the script's ordinary opt-in and question
+choices and completes the survey locally, as requested by the owner.
+
+The audited local library contains 235 service-9 calls across 232 episodes.
+All use seven arguments and upload type 2. Their result handling branches on
+R=1: success shows “Thanks for taking the survey!” and reads an aggregate
+buffer to display server poll percentages. The other branch shows service 65
+with “Connection failed. Please try again later.”, then rejoins the remaining
+story. Returning success without server data would fabricate a result and
+read uninitialized memory. Offline completion instead uses R=0 and replaces
+only that known connection-error notice with the script's thank-you wording.
+The unused submission words are preserved, never dereferenced or populated.
+
+At dispatch, `survey.script_response` copies the VM and runs at most 128 KiWi
+instructions with the not-uploaded result. Its first stop must be service 65
+with exactly three arguments and the exact connection-error text above.
+Another host service, pause, instruction limit, VM error or unfamiliar text
+leaves an explicit unsupported stop with the original frame and live state
+intact. The probe does not dispatch host services or consume either random
+stream. It identifies the actual response frame rather than hard-coding an
+episode, scene number, PC or jump target.
+
+While the local receipt is visible, the original submission remains pending.
+The receipt reuses the service-33 blue message panel, supplied bitmap fonts,
+Continue control and one-second reading gate. Its title and use of this panel
+are explicit offline presentation choices, not evidence of an original survey
+screen. Menu/focus pauses and save/load preserve active time. No network
+request is created.
+
+On acknowledgement, the runtime rechecks the continuation, resumes service 9
+with 0, and executes the actual instructions to the verified service-65 frame.
+It presents that response internally with the replacement text and completes
+its ordinary dialogue callback once, since the player already acknowledged
+the receipt. This retains speaker/panel state and any queued transition's
+random draw without showing a second notice. Subsequent script instructions,
+choices, ending messages and native episode exit execute normally. Original
+bytecode and text resources are unchanged; no server percentages are supplied.
+
+Save version 13 adds pending `survey_confirmation` with only
+`details.response_pc`, using the existing `engine.message_panel` fields for
+the exact receipt and reading time. Loading checks both against the retained
+service-9 frame and the copied VM's verified continuation. Earlier unsupported
+service-9 saves recover by dispatching only their retained call. Questions,
+choice result cells and previous random draws are not replayed.
+
+Authored tests cover both call encodings, opaque arguments, the absence of
+network activity and fabricated percentages, continuation into remaining
+story, one callback, reading/input gates, save recovery and invalid or unknown
+continuations. Optional local tests execute the original survey callers and
+choices in Green With Kenji and 300's A Crowd, including declining, saved
+submission recovery, their original ending panels and subsequent service-7
+exit. A desktop check covers rendering, focus/menu pauses and pixel-identical
+restoration. These checks isolate the original survey routines; they do not
+establish complete playback of every surveyed episode.
+
 ## Loading overlay (service 91)
 
 ```text

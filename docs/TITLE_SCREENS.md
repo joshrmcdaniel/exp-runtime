@@ -167,7 +167,7 @@ Versions 1–10 have no entrance history. A pending title migrates to
 readable, immediately acknowledgeable state. Other screens receive null.
 Restoring version 11 retains the exact animation phase and gate without
 replaying the VM, resetting timers or consuming random draws. See the full
-[runtime save schema](RUNTIME.md#runtime-save-schema-version-12).
+[runtime save schema](RUNTIME.md#runtime-save-schema-version-13).
 
 ## Implementation and verification boundary
 

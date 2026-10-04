@@ -33,12 +33,12 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 | 1 (`01`) | a1..a8; T(1), T(2), optional T(3) | Pipe-delimited choices; title, description, millisecond timer, timeout selection, character and portrait mode. See section 4.6. | zero-based selection | P |
 | 2 (`02`) | T(1), T(2), a3..a6 | Begins incremental choice: title, description, timer, timeout selection, character, portrait mode; `FUN_000ae740`. | 0 | C |
 | 3 (`03`) | T(1), a2, bool(a3) | Adds an option, mapped return value (-999 selects its index), and enabled flag; `FUN_000ae6c8`. | 0 | C |
-| 4 (`04`) | bool(a1) | Attaches incremental choices, clears the builder pointer, and waits. a1 requests shuffled order. | mapped selection | P (unshuffled only) |
+| 4 (`04`) | bool(a1) | Attaches incremental choices, clears the builder pointer, and waits. Nonzero a1 shuffles labels and return mappings using the shared native LCG; see section 4.6. | mapped selection | P |
 | 5 (`05`) | a1, low byte of a2 | Writes a byte at game-state offset a1 via `FUN_00095d48`; service 13 reads these bytes as character expression defaults. | 0 | C (expression byte) |
 | 6 (`06`) | a1, a2 destination | Gets the named character string via `FUN_00096c64`; writes to VM address a2 or, for negative a2, dynamic slot `~a2`. | address / handle | X |
 | 7 (`07`) | none read; all supplied words ignored | Ends the episode through `0007e614`: dispose panels, reset hosts/numeric state, cancel scheduled scripts and retire native resume progress. [Contract](STORY_SERVICES.md#episode-exit-services-7-and-63). | terminal scene exit | P (terminal) |
 | 8 (`08`) | a1 title ref, T(2), a3, a4 | Episode/week title card, UI type 16; negative a1 means empty title, a3 is the background asset, a4 a retained flag. Original fonts, layout, entrance and input gate; Android promotional branches remain unmodeled. See [TITLE_SCREENS.md](TITLE_SCREENS.md). | 0 on acknowledgement | P |
-| 9 (`09`) | helper-defined | Builds `pollID=...&upType=...` request via `FUN_0009f0cc`, invokes UI/network path, and waits. Old background label is incorrect. | pending | X |
+| 9 (`09`) | a1 poll ID, a2 upload type; remaining words opaque | `0009f0cc` builds then discards the poll parameters, returns `EMPTY`; sender `0007b448` is empty in Android 1.0.9. The runtime implements owner-requested offline completion for type 2 with a verified script continuation. [Contract](STORY_SERVICES.md#offline-surveys-service-9). | native waits; offline R=0 | P (offline) |
 | 10 (`0a`) | a1, bool(a2) | Schedules script resource a1 and its flag through `FUN_0007b44c`; LIFO consumption after HALT. | 0 | C |
 | 11 (`0b`) | a1, a2 | Sets panel background base a2, variant a1 through `FUN_000a92f4`. | 0 | C (static background) |
 | 12 (`0c`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
@@ -368,6 +368,7 @@ service 3(option_ref, return_value, enabled) -> 0
     append T(option_ref)
     mapping[index] = index if return_value == -999 else return_value
 service 4(shuffle) -> pending
+    if shuffle != 0: apply native full-list swaps to labels and mapping
     attach the built panel; clear the builder pointer
     R = mapping[selected_zero_based_index]
     result_cells[0] = R
@@ -379,7 +380,27 @@ zero-based indices; `FUN_000ae740`/`000ae6c8` build custom mappings;
 the optional mapping, resumes the VM, and writes host +0x60. The final
 pipe-delimited field is empty if its content is whitespace; other fields are
 not trimmed by the inspected helper. Disabling an incremental option prevents
-player selection. Shuffle requires native PRNG semantics and stays unsupported.
+player selection.
+
+For a nonzero shuffle flag, `FUN_000aeee4` visits rows `i = 0..N-1`, draws
+`j = native_random.next() % N`, and swaps labels and return mappings at `i/j`.
+Every draw uses the **full** list size, including self-swaps; this is not
+Fisher-Yates. The native helper also swaps the widget's index table at +0x9e;
+the ordinary choice callback uses the displayed row and panel mapping at +0xae.
+Per-row enabled flags stay in their existing slots. Empty lists draw nothing,
+single-option lists still draw once, and a zero flag consumes no randomness.
+`0004c1bc` calls `00122554` on the same application LCG used by service 27 and
+football/grid games, separate from the libc stream used by service 71. See
+[MINIGAMES.md](MINIGAMES.md#22-footballgrid-engine-stream) for the generator.
+From saved state 1, four options end in original-index order `[2,1,3,0]`, with
+stored random state `0xc46b9b3d`; the next service-27 call with bound 100 gives 43.
+
+The pending choice stores the resulting labels and mapping. Rendering, repeated
+`advance()`, and reloading that choice do not reshuffle or consume random draws.
+Old unsupported service-4 saves retain the builder and pre-shuffle random state;
+loading validates both and dispatches only that held call once. Shuffling needs
+no new save fields; existing version-12 choices remain valid. Clicks and timeouts
+use the shuffled return mapping.
 
 The panel stores initial/remaining time at +0x4c/+0x48. `FUN_000ae4f4` subtracts
 elapsed time and uses the configured timeout selection; `FUN_000ad6b4` divides
@@ -414,7 +435,10 @@ FUN_00082744(DAT_002ae938,
 
 The supplied New Girl script reaches service 1 at scene 25002 PC 316 with
 arguments `(0,949,937,-1,-1,-2,-1,1)`. Choices 0/1 lead to different dialogue
-instructions at PCs 336/352. See [RUNTIME.md](RUNTIME.md) for playback and save
+instructions at PCs 336/352. Its later randomized choice in scene 25005 uses
+service 4 at PC 1465 (bundled) or 1478 (imported), with argument `(1,)`.
+Both variants recover an old unsupported checkpoint and continue through the
+original option callbacks. See [RUNTIME.md](RUNTIME.md) for playback and save
 verification.
 
 ## 5. Remaining work and verification boundary

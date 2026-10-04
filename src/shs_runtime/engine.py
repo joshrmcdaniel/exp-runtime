@@ -13,6 +13,7 @@ from .football import Football, read_football
 from .character_picker import CharacterPicker
 from .scene_badge import SceneBadge
 from .loading import LoadingScreen, loading_waits
+from .survey import confirmation as survey_confirmation, is_survey, script_response
 from .message_panel import MessagePanel
 from .speaker_names import SpeakerNames
 from .title_screen import TitleScreen
@@ -248,7 +249,7 @@ class EngineState:
             result.append(chr(byte))
         return ''.join(result)
 
-    def dispatch(self, vm: KiwiVM, *, resource_exists=None) -> EngineAction:
+    def dispatch(self, vm: KiwiVM, *, resource_exists=None, dialogue_override=None) -> EngineAction:
         request = vm.pending
         if request is None or request.kind != StopKind.YIELD:
             raise VMError('engine dispatch requires a pending yield')
@@ -273,6 +274,19 @@ class EngineState:
             # as a callback that could run the following instruction.
             self.close_episode()
             return EngineAction('episode_exit', request, False)
+        if y == 9:
+            at_least(2)
+            if not is_survey(args):
+                return EngineAction('unhandled_yield', request, False,
+                                    dict(reason=f'Unsupported survey upload type {args[1]}'))
+            response = script_response(vm, self.read_text)
+            if response is None:
+                return EngineAction('unhandled_yield', request, False,
+                                    dict(reason='Unsupported survey response continuation'))
+            # Hold the submission through the local receipt. Acknowledgement
+            # follows the verified not-uploaded branch, without poll results.
+            self.message_panel = survey_confirmation()
+            return EngineAction('survey_confirmation', request, False, dict(response_pc=response.pc))
         if y == 91:
             self.loading = LoadingScreen(loading_waits(vm, request), self.loading.elapsed_ms if self.loading else 0)
             details = {}
@@ -612,7 +626,8 @@ class EngineState:
             if len(args) > override_at and args[override_at] != -1:
                 expression = (args[override_at] + 128) % 256 - 128
             expression = max(0, expression)
-            raw_text = self.read_text(vm, args[text_index])
+            raw_text = (self.read_text(vm, args[text_index]) if dialogue_override is None
+                        else dialogue_override)
             mode = args[0] if y == 13 and text_index and args[0] in (-2, -3) else 0
             return EngineAction('dialogue', request, False,
                                 self.present_dialogue(character_id, expression, raw_text, mode))

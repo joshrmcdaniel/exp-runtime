@@ -32,6 +32,7 @@ dist/
 /original-screenshots/
 /output/
 /renpy-*-sdk/
+/decomp/
 
 # Private native research and generated reports.
 *.so

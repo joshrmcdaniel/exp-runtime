@@ -52,7 +52,7 @@ next() = state >> 17
 below(n) = next() % n              # n > 0
 ```
 
-The mini-game choice panel uses `lrand48`, including its shuffles. This matches
+The service-71 mini-game choice panel uses `lrand48`, including its shuffles. This matches
 the Bionic/POSIX default state and the recovered native calls. First outputs:
 `851401618, 1804928587, 758783491, 959030623`. The runtime starts this stream at
 the default for each new session; it does not emulate a single libc stream
@@ -76,8 +76,11 @@ Evidence: seed constructor `0004c248`, initializer `00126fa8`, generator
 `1103527590` and `2524885223`. Native explicit seed 0 maps to `0xaaaaaaaa`;
 the native default constructor passes -1 to select `clock()`. Python's explicit
 `NativeRandom(state)` accepts an already initialized state for saved replay.
-Native signed `abs(INT_MIN)` overflow is not emulated. Other engine random
-services and their application-wide lifetime remain outside this implementation.
+Native signed `abs(INT_MIN)` overflow is not emulated. Service 27 and ordinary
+choice shuffling (service 4, `000aeee4`) share this stream; the latter consumes
+one draw per option. See [ENGINE_ABI.md](ENGINE_ABI.md#46-services-14-ordinary-choices).
+Other engine random services and their application-wide lifetime remain outside
+this implementation.
 
 ## 3. Service 71: timed word choices
 
