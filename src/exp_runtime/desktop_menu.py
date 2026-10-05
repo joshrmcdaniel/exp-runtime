@@ -4,16 +4,16 @@ from collections import Counter
 from io import BytesIO
 import math
 
-import pygame
+from . import graphics as pygame
 
 from .app_icon import icon_surface
+from .app_info import runtime_version
 from .content import is_bundled
 from .desktop_dialogue import DialogueRenderer
 from .desktop_text import BitmapTextRenderer
 from .fonts import TextStyle
 from .languages import TITLE_LANGUAGES
 from .games import GAMES
-from .launcher import default_library
 from .menu import MenuFont, MenuStrings, main_button_rects
 from .ui_assets import ImagePack, LayoutBank, Rect, read_ui
 
@@ -27,6 +27,7 @@ class MenuRenderer:
         self.library = library
         self.canvas = pygame.Surface((320, 480)).convert(32)
         self.buttons = []
+        self.pressed = None
         self.fallback = pygame.font.Font(None, 20)
         self.small = pygame.font.Font(None, 17)
         if library:
@@ -95,6 +96,7 @@ class MenuRenderer:
 
     def button(self, label, rect, command, *, pressed=None, enabled=True, selected=False):
         rect = pygame.Rect(rect)
+        pressed = (self.pressed if pressed is None else pressed) if enabled else None
         if self.library:
             # Native list buttons: layouts 70/71 (blue), 72/73 (orange).
             layout = (72 if selected else 70) + int(pressed == command)
@@ -141,8 +143,8 @@ class MenuRenderer:
         shift = round(-275 * (1 - progress))
         self.layout(79, Rect(shift, 353, 275, 109))
         labels = [self.strings[126 if app.can_resume() else 125], self.strings[127],
-                  self.strings[91], self.strings[252]]
-        commands = [('episodes', 'play'), ('episodes', 'weekly'), ('episodes', 'all'), ('legacy',)]
+                  self.strings[91], 'Switch Game']
+        commands = [('episodes', 'play'), ('episodes', 'weekly'), ('episodes', 'all'), ('switch_games',)]
         for i, (rect, label, command) in enumerate(zip(main_button_rects(self.bank), labels, commands)):
             t = min(1, max(0, (age - start - 400) / ((i + 1) * 250))) if app.intro else progress
             # Exponential slide-in; native actions use a rate-10 ease.
@@ -176,6 +178,7 @@ class MenuRenderer:
 
     def draw(self, app):
         self.buttons = []
+        self.pressed = app.pressed
         screen = app.screen
         if screen == 'main':
             self.main(app)
@@ -186,7 +189,7 @@ class MenuRenderer:
             for index, (key, game) in enumerate(GAMES.items()):
                 y = 193 + 99 * index
                 self.button(game.TITLE, (25, y, 270, 36), ('choose_game', key), pressed=app.pressed)
-                ready = (default_library(key) / 'library.json').is_file()
+                ready = (app.library_path(key) / 'library.json').is_file()
                 self.label('Open your library' if ready else 'Import your game assets to play',
                            (25, y + 44, 270, 32), color=GRAY, center=True)
             self.label('Each game uses its own assets, episodes and saves.',
@@ -196,7 +199,8 @@ class MenuRenderer:
             self.label('Bring your game', (25, 123, 270, 30), size=20)
             self.label(f'Choose your {GAMES[app.selected_game].SOURCES}. It includes the base assets and bundled episodes.',
                        (25, 169, 265, 95), color=GRAY)
-            self.label('You can add episode EXP files or folders afterward. Drag files onto this window, or browse below.',
+            self.label('You can add EXP files or ZIP/RAR archives afterward. Choose your files below.' if app.file_picker else
+                       'Add EXP files, ZIP/RAR archives or folders afterward. Drag files here, or browse below.',
                        (25, 265, 265, 85), color=GRAY)
             self.button('Choose Game', (30, 362, 124, 32), ('browse', 'apk'))
             self.button('Open Library', (166, 362, 124, 32), ('browse', 'library'))
@@ -263,7 +267,7 @@ class MenuRenderer:
                 y = clip.y + round((clip.height - thumb) * app.scroll / maximum)
                 pygame.draw.rect(self.canvas, BLUE, (305, y, 3, thumb))
             if not app.visible_episodes():
-                self.label('No episodes found. Add your EXP files below.', (30, 191, 260, 85), color=GRAY)
+                self.label('No episodes found. Add EXP files or ZIP/RAR archives below.', (30, 191, 260, 85), color=GRAY)
             sections = app.episode_sections()
             group_count = sum(section.key != 'saved' for section in sections)
             count = self.text.layout('ArialRoundedMTBold11',
@@ -293,15 +297,31 @@ class MenuRenderer:
                     self.button('New Game', (83, 350, 154, 33), ('restart',))
         elif screen == 'options':
             self.panel('Options')
-            for y, label, value, setting in ((124, 'Music', app.state.music, 'music'), (177, 'Sound', app.state.sound, 'sound')):
+            for y, label, value, setting in ((120, 'Music', app.state.music, 'music'), (164, 'Sound', app.state.sound, 'sound')):
                 self.label(label, (31, y + 5, 147, 30), size=20)
                 self.button('On' if value else 'Off', (213, y, 78, 29), ('toggle', setting))
-            self.label('Episode title language', (31, 226, 258, 25))
-            language = self.strings[118 + TITLE_LANGUAGES.index(app.state.title_language)]
-            self.button(language, (30, 253, 260, 32), ('title_languages',))
-            self.button('Add Episodes', (30, 305, 260, 34), ('browse', 'episodes'))
-            self.button('Content Library', (30, 357, 260, 34), ('library',))
-            self.button('Switch Game', (165, 436, 143, 29), ('switch_games',))
+            if app.paused_menu:
+                self.button('Cheats', (30, 223, 260, 34), ('cheats',))
+                self.label('Runtime save slot', (31, 286, 258, 25), color=GRAY)
+                self.button('Save Progress', (30, 317, 260, 34), ('save',))
+                self.button('Load Progress', (30, 369, 260, 34), ('load',))
+            else:
+                self.label('Episode title language', (31, 210, 258, 25))
+                language = self.strings[118 + TITLE_LANGUAGES.index(app.state.title_language)]
+                self.button(language, (30, 239, 260, 32), ('title_languages',))
+                self.button('Add Episodes', (30, 282, 260, 32), ('browse', 'episodes'))
+                self.button('Content Library', (30, 325, 260, 32), ('library',))
+                self.button('Cheats', (30, 368, 260, 32), ('cheats',))
+                self.button('Switch Game', (165, 436, 143, 29), ('switch_games',))
+        elif screen == 'cheats':
+            self.panel('Cheats')
+            self.label('Choice hints', (31, 126, 170, 30), size=20)
+            self.button('On' if app.state.choice_hints else 'Off', (213, 124, 78, 29),
+                        ('toggle', 'choice_hints'))
+            self.label('Green: gain or correct answer.\nRed: loss, wrong answer, or no gain where another answer gains.\nAmber: mixed effects.',
+                       (30, 184, 260, 120), color=GRAY)
+            self.label('Includes classroom and word quizzes, and short sequences with delayed rewards. Uncertain outcomes stay unmarked.',
+                       (30, 321, 260, 95), color=GRAY)
         elif screen == 'title_languages':
             self.panel('Episode Titles')
             self.label('Choose episode names where translations are available. Story text stays in the language of each supplied episode.',
@@ -330,12 +350,15 @@ class MenuRenderer:
                 self.button('Open Another Library', (30, 369, 260, 34), ('browse', 'library'))
         elif screen == 'help':
             self.panel('Help / About')
-            self.label('Click or press Space to reveal text and continue. Escape opens the pause menu. F5 saves; F9 loads your manual save.',
+            self.label('Tap to reveal text and continue. The lower-left button opens Pause. Save and load progress under Options.' if app.file_picker else
+                       'Click or press Space to reveal text and continue. Escape opens the pause menu. F5 saves; F9 loads your manual save.',
                        (29, 125, 262, 100), color=GRAY)
-            self.label('Add episode EXP files in Options, or drop files and folders onto the menu. Play/Resume lists all your installed episodes.',
+            self.label('Add EXP files or ZIP/RAR archives in Options using Files. Play/Resume lists your installed episodes.' if app.file_picker else
+                       'Add EXP files or ZIP/RAR archives in Options, or drop files and folders onto the menu. Play/Resume lists your episodes.',
                        (29, 235, 262, 100), color=GRAY)
-            self.label('EXP Runtime\nAn independent engine reconstruction. Some game features remain unimplemented.',
-                       (29, 349, 262, 62), size=11, color=GRAY)
+            self.label(f'EXP Runtime v{runtime_version()}', (29, 334, 262, 25), color=GRAY)
+            self.label('Independent game engine.', (29, 361, 262, 22), size=11, color=GRAY)
+            self.button('GitHub Project', (30, 390, 260, 29), ('project',), pressed=app.pressed)
         elif screen == 'browser':
             self.panel({'apk': 'Choose Game', 'music_apk': 'Add APK Music',
                         'episodes': 'Add Episodes', 'library': 'Open Library'}[app.browser_kind])
@@ -350,7 +373,9 @@ class MenuRenderer:
                 rect = pygame.Rect(19, 190 + i * 35 - app.scroll, 282, 35)
                 if not rect.colliderect(clip):
                     continue
-                pygame.draw.rect(self.canvas, (240, 242, 246) if i % 2 else (255, 255, 255), rect)
+                color = ((170, 225, 249) if app.pressed == ('file', path) else
+                         (240, 242, 246) if i % 2 else (255, 255, 255))
+                pygame.draw.rect(self.canvas, color, rect)
                 self.label(('[+] ' if path.is_dir() else '') + path.name, rect.inflate(-10, -8), size=14)
                 self.buttons.append((rect.clip(clip), ('file', path)))
             self.canvas.set_clip(None)

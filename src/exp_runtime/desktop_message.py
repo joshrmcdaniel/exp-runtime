@@ -2,7 +2,8 @@
 from dataclasses import replace
 from functools import lru_cache
 
-import pygame
+from . import graphics as pygame
+from .desktop_pause import draw_pause_gear
 
 from .fonts import TextStyle
 from .menu import MenuStrings
@@ -112,7 +113,7 @@ class MessageRenderer:
                                                                max(1, round(60 * scale)))),
                          (round(245 - 60 * scale), round(button_y - 30 * scale)))
         self.canvas.blit(self.art.frame(126, 47), (0, 431))
-        self.canvas.blit(self.art.frame(126, 49), (0, 408))
+        draw_pause_gear(self.canvas, self.art)
         hint = self.text.layout('ArialRoundedMTBold11', strings[36 if panel.ready else 39],
                                 247, TextStyle(11, 0, (185, 185, 185)))
         self.text.draw_layout(self.canvas, 'ArialRoundedMTBold11', hint,

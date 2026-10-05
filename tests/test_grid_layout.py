@@ -12,6 +12,23 @@ from test_word_grid import play_phase, resources, tutorial_resources
 
 
 class GridLayoutTests(unittest.TestCase):
+    def test_solid_tile_faces_follow_flip_and_keep_the_native_front_plane(self):
+        import math
+        from exp_runtime.shs.grid_motion import cube_faces, project
+        front = cube_faces(3, 2, 1, 0)
+        self.assertIn('front', [face for _, face, _ in front])
+        self.assertNotIn('back', [face for _, face, _ in front])
+        corners = next(points for _, face, points in front if face == 'front')
+        self.assertEqual(corners[0], project(3, 2, 522, 0)[:2])
+        self.assertEqual(corners[2], project(3, 2, 972, 450)[:2])
+        back = cube_faces(3, 2, 1, 0, math.pi)
+        self.assertIn('back', [face for _, face, _ in back])
+        self.assertNotIn('front', [face for _, face, _ in back])
+        edge = cube_faces(3, 2, 1, 0, math.pi / 2)
+        self.assertIn('side', [face for _, face, _ in edge])
+        self.assertTrue(all(len(points) == 4 for _, _, points in edge))
+        self.assertEqual(cube_faces(3, 2, 1, 0, scale=0), [])
+
     def test_tutorial_panels_follow_position_and_measured_paragraph_height(self):
         top = tutorial_box(128, 0)
         center = tutorial_box(128, 1)

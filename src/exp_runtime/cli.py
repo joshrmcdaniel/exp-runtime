@@ -37,7 +37,7 @@ def _build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument("--music-apk", type=Path,
                                help="Optional Android 1.0.9 APK supplying missing IPA music.")
     import_parser.add_argument("--episodes", type=Path, nargs="+", action="extend", default=[],
-                               help="EXP files or directories; directories are scanned recursively.")
+                               help="EXP files, episode ZIPs/RARs or directories; subfolders are scanned recursively.")
     import_parser.add_argument("--library", type=Path, required=True,
                                help="New library directory for this game.")
 

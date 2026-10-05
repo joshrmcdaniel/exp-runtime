@@ -1,11 +1,11 @@
-"""Small pygame frontend; all story decisions remain in the KiWi runtime."""
+"""Shared gameplay frontend; all story decisions remain in the KiWi runtime."""
 from collections import OrderedDict
 from io import BytesIO
 import logging
 import os
 
 os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
-import pygame
+from . import graphics as pygame
 
 from .app_icon import icon_surface
 from .content import ContentError
@@ -14,6 +14,7 @@ from .games import GAMES, game_id
 from .desktop_text import BitmapTextRenderer
 from .desktop_dialogue import DialogueRenderer
 from .desktop_choice import ChoiceRenderer
+from .desktop_pause import PAUSE_OPEN_MS, PauseRenderer, draw_pause_gear
 from .shs.desktop_grid import GridRenderer
 from .shs.desktop_football import FootballRenderer
 from .desktop_picker import CharacterPickerRenderer
@@ -23,6 +24,8 @@ from .desktop_title import TitleRenderer
 from .desktop_input import InputRenderer, INPUT_RECT
 from .fonts import TextStyle
 from .runtime import SaveError, Session
+from .scene_badge import outline_badge_text
+from .pointer import ButtonPress
 from .text_input import accept_name_character, validate_name
 from .ui_assets import ImagePack, Rect
 from .vm import VMError
@@ -37,13 +40,18 @@ PANEL = (23, 29, 45)
 
 class Desktop:
     def __init__(self, session: Session, *, audio: bool = True, window=None, on_main_menu=None,
-                 episode_title=None):
+                 episode_title=None, on_menu_page=None):
         pygame.display.init()
         pygame.font.init()
         if window is None:
             pygame.display.set_icon(icon_surface())
         self.window = window if window is not None else pygame.display.set_mode(SIZE, pygame.RESIZABLE)
         self.on_main_menu = on_main_menu
+        self.on_menu_page = on_menu_page
+        self.pause_renderer = None
+        self.pause_elapsed_ms = PAUSE_OPEN_MS
+        self.gear_pointer_down = False
+        self.ui_sounds = {}
         self.episode_title = episode_title if episode_title is not None else session.resources.record['titles'][0]
         pygame.display.set_caption(GAMES[game_id(session.resources)].TITLE + ' — ' + self.episode_title)
         # Cocoa's default opaque surface still carries an alpha bitmask.
@@ -68,6 +76,7 @@ class Desktop:
         self.input_keyboard = False
         self.text_input_started = None  # Force the first sync to set SDL's state.
         self.picker_pointer_down = False
+        self.press = ButtonPress()
         self.images = OrderedDict()
         self.buttons = []
         self.scroll = self.max_scroll = 0
@@ -81,6 +90,7 @@ class Desktop:
         self.sound_serial = session.engine.sound_serial
         self.audio = False
         self.music_enabled = self.sound_enabled = True
+        self.choice_hints = False
         self.active = True
         self.menu_open = False
         if audio:
@@ -253,11 +263,26 @@ class Desktop:
             return
         self._attempt(lambda: self.session.answer(value))
 
+    def _menu_sound(self, *, opening=False):
+        library = self.session.resources.library
+        if not self.audio or not self.sound_enabled or not hasattr(library, 'read_asset'):
+            return
+        profile = GAMES[game_id(self.session.resources)]
+        asset = profile.PAUSE_SOUND if opening else profile.CLICK_SOUND
+        try:
+            if asset not in self.ui_sounds:
+                self.ui_sounds[asset] = pygame.mixer.Sound(file=BytesIO(library.read_asset(asset)))
+            self.ui_sounds[asset].play()
+        except (ContentError, pygame.error) as error:
+            logging.debug('Pause sound %s unavailable: %s', asset, error)
+
     def render(self):
         self.buttons = []
         action = self.session.pending
         self._sync_text_input()
         token = self._screen_token()
+        self.press.validate(self._press_token())
+        self.dialogue_renderer.gear_pressed = self.press.pressed == ('menu',) and not self.menu_open
         if token != self.screen_token:
             self.screen_token, self.scroll = token, 0
         self.canvas.fill((14, 20, 32))
@@ -288,13 +313,15 @@ class Desktop:
                 self.max_scroll = page.max_scroll * 1.5
                 self.scroll = min(self.scroll, self.max_scroll)
                 pointer = None
-                if hasattr(self, 'viewport'):
+                if hasattr(self, 'viewport') and self.press.origin is None and not self.menu_open:
                     x, y = pygame.mouse.get_pos()
                     if self.viewport.collidepoint(x, y):
                         pointer = ((x - self.viewport.x) * 320 / self.viewport.width,
                                    (y - self.viewport.y) * 480 / self.viewport.height)
                 _, buttons = self.choice_renderer.draw(self.canvas, self.session,
-                                                        scroll=self.scroll / 1.5, pointer=pointer)
+                                                        scroll=self.scroll / 1.5, pointer=pointer,
+                                                        pressed=self.press.pressed if not self.menu_open else None,
+                                                        choice_hints=self.choice_hints)
                 self.buttons = [(pygame.Rect(*(round(value * 1.5) for value in rect)), command)
                                 for rect, command in buttons]
                 if pygame.time.get_ticks() < self.message_until:
@@ -308,8 +335,7 @@ class Desktop:
             try:
                 self.dialogue_renderer.draw(self.canvas, self.session)
                 self.scroll = self.max_scroll = 0
-                gear = self.dialogue_renderer.frame(126, 49)
-                self.canvas.blit(pygame.transform.smoothscale(gear, (round(gear.get_width() * 1.5), round(gear.get_height() * 1.5))), (0, 612))
+                draw_pause_gear(self.canvas, self.dialogue_renderer, scale=1.5)
                 self.buttons = [(pygame.Rect(0, 633, 90, 87), ('menu',)),
                                 (pygame.Rect(0, 0, *SIZE), ('continue',))]
                 if pygame.time.get_ticks() < self.message_until:
@@ -398,7 +424,7 @@ class Desktop:
                 (dialogue.finish_requested, dialogue.complete) if dialogue else None,
                 tuple(picker.order) if picker else None,
                 (title.reveal_width == 320, title.ready) if title else None,
-                details.get('draft'), self.input_error)
+                details.get('draft'), self.input_error, self.menu_open)
 
     def _present(self):
         engine = self.session.engine
@@ -425,49 +451,59 @@ class Desktop:
         if icon is not None:
             layer.blit(icon, icon.get_rect(center=(38, 30)))  # Layout 67 node 2.
         color = (69, 107, 176) if badge.text == 'Free Time' else (223, 163, 52)
-        text = self.story_text.layout('ArialRoundedMTBold16', badge.text, 110,
-                                      TextStyle(14, 1, color))
-        x, y, scale = badge.text_origin
-        self.story_text.draw_layout(layer, 'ArialRoundedMTBold16', text,
-                                   x, y, scale=scale)
+        name = 'ArialRoundedMTBold16'
+        if getattr(self.story_text.font(name), 'cap_height', None) is not None:
+            name = 'ArialMT14'
+            region = self.session.resources.dialogue_layout().bank.rectangle(67, 3)
+            text, (x, y), scale = outline_badge_text(badge.text, self.story_text.font(name), region, color)
+        else:
+            text = self.story_text.layout(name, badge.text, 110, TextStyle(14, 1, color))
+            x, y, scale = badge.text_origin
+        self.story_text.draw_layout(layer, name, text, x, y, scale=scale)
         # 200ms MoveTo from x=-width/2 to center x=100. Ad-free top inset=10.
         left = -171 + (100 + 171 / 2) * badge.elapsed_ms / 200
         self.canvas.blit(pygame.transform.smoothscale(layer, (257, 90)), (round(left * 1.5), 15))
 
     def _draw_menu(self):
-        """Host save/load controls, reached through the original gear artwork."""
-        shade = pygame.Surface(SIZE, pygame.SRCALPHA)
-        shade.fill((0, 0, 0, 140))
-        self.canvas.blit(shade, (0, 0))
-        entries = [('Resume', 'resume'), ('Save', 'save'), ('Load', 'load')]
-        if self.on_main_menu:
-            entries.append(('Main Menu', 'main_menu'))
-        self.dialogue_renderer.box(self.canvas, Rect(96, 245, 288, 54 + 58 * len(entries)), 1)
-        self.story_text.draw(self.canvas, 'PajamaHip26', 'Paused', 173, 228, 200, TextStyle(26, 8))
-        self.buttons = []
-        for index, (label, command) in enumerate(entries):
-            rect = pygame.Rect(96, 284 + index * 58, 288, 52)
-            pygame.draw.line(self.canvas, (178, 179, 179), (rect.x, rect.y - 5), (rect.right, rect.y - 5))
-            self.story_text.draw(self.canvas, 'ArialRoundedMTBold16', label, 123, rect.y + 12,
-                                 250, TextStyle(16, 0, (41, 104, 221)), scale=1.3)
-            self.buttons.append((rect, (command,)))
+        if self.pause_renderer is None:
+            self.pause_renderer = PauseRenderer(self.session.resources.library,
+                                                 self.story_text, self.dialogue_renderer)
+        buttons = self.pause_renderer.draw(self.canvas, application=self.on_menu_page is not None,
+                                            main_menu=self.on_main_menu is not None,
+                                            pressed=self.press.pressed,
+                                            elapsed_ms=self.pause_elapsed_ms)
+        self.buttons = [(pygame.Rect(*(round(value * 1.5) for value in rect)), command)
+                        for rect, command in buttons]
         if pygame.time.get_ticks() < self.message_until:
-            self._text(self.message, 96, 320 + 58 * len(entries), 300, font=self.small)
+            self._text(self.message, 30, 640, 420, font=self.small)
 
     def command(self, command):
+        self.press.cancel()
+        self.gear_pointer_down = False
         self._sync_text_input()
         kind = command[0]
+        if self.menu_open and kind in ('save', 'load'):
+            self._menu_sound()
         if kind == 'menu':
+            if self.menu_open:
+                return
             self.picker_pointer_down = False
             if self.session.engine.word_grid:
                 self.session.grid_pointer('cancel')
             self.menu_open = True
+            self.pause_elapsed_ms = 0
             self._sync_music()
+            self._menu_sound(opening=True)
         elif kind == 'resume':
             self.menu_open = False
             self._sync_music()
+            self._menu_sound()
+        elif kind == 'pause_page' and self.on_menu_page:
+            self.on_menu_page(command[1])
+            self._menu_sound()
         elif kind == 'main_menu' and self.on_main_menu:
             self.on_main_menu()
+            self._menu_sound()
         elif kind == 'save':
             try:
                 self.session.save()
@@ -501,6 +537,19 @@ class Desktop:
                 self._attempt(lambda: self.session.answer(command[1] if kind == 'choose' else None))
         self._sync_text_input()
 
+    def _press_token(self):
+        action = self.session.pending
+        game = self.session.engine.word_game
+        return (id(self.session), id(action), self.menu_open,
+                self.session.vm.steps_executed, game.round if game else None, self.scroll)
+
+    def cancel_pointer(self):
+        self.press.cancel()
+        self.gear_pointer_down = False
+        self.picker_pointer_down = False
+        if self.session.engine.word_grid:
+            self.session.grid_pointer('cancel')
+
     def handle_event(self, event):
         self._sync_text_input()
         if event.type == pygame.QUIT:
@@ -514,22 +563,40 @@ class Desktop:
         if event.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWFOCUSGAINED):
             self.active = event.type == pygame.WINDOWFOCUSGAINED
             self._sync_music()
-            self.picker_pointer_down = False
-            if not self.active and self.session.engine.word_grid:
-                self.session.grid_pointer('cancel')
+            self.cancel_pointer()
             self._sync_text_input()
             return True
         action = self.session.pending
         if action and action.name == 'text_input' and (not self.active or self.error):
             return True
+        pointer = (event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION)
+                   and (event.type == pygame.MOUSEMOTION or event.button == 1))
+        if self.menu_open and self.pause_elapsed_ms < PAUSE_OPEN_MS and pointer:
+            self.press.cancel()
+            return True
+        if pointer and not self.menu_open and hasattr(self, 'viewport'):
+            x = (event.pos[0] - self.viewport.x) * SIZE[0] / self.viewport.width
+            y = (event.pos[1] - self.viewport.y) * SIZE[1] / self.viewport.height
+            hit = (self.viewport.collidepoint(event.pos) and any(
+                command == ('menu',) and rect.collidepoint(x, y) for rect, command in self.buttons))
+            if event.type == pygame.MOUSEBUTTONDOWN and hit:
+                self.gear_pointer_down = True
+                self.press.update('down', ('menu',), self._press_token())
+                return True
+            if self.gear_pointer_down:
+                phase = 'up' if event.type == pygame.MOUSEBUTTONUP else 'move'
+                command = self.press.update(phase, ('menu',) if hit else None, self._press_token())
+                if phase == 'up':
+                    self.gear_pointer_down = False
+                if command:
+                    self.command(command)
+                return True
         if (action and action.name == 'character_picker' and not self.menu_open and not self.error
                 and event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP) and event.button == 1):
             x = (event.pos[0] - self.viewport.x) * 320 / self.viewport.width
             y = (event.pos[1] - self.viewport.y) * 480 / self.viewport.height
             if event.type == pygame.MOUSEBUTTONDOWN:
                 self.picker_pointer_down = 0 <= x <= 320 and 0 <= y <= 480
-                if 0 <= x < 60 and 422 <= y < 480:
-                    self.command(('menu',))
             elif self.picker_pointer_down:
                 self.picker_pointer_down = False
                 if self.picker_renderer.confirm_hit((x, y)):
@@ -543,9 +610,7 @@ class Desktop:
                 and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
             x = (event.pos[0] - self.viewport.x) * 320 / self.viewport.width
             y = (event.pos[1] - self.viewport.y) * 480 / self.viewport.height
-            if 0 <= x < 60 and 422 <= y < 480:
-                self.command(('menu',))
-            elif 0 <= x <= 320 and 0 <= y <= 480:
+            if 0 <= x <= 320 and 0 <= y <= 480:
                 self._attempt(lambda: self.session.answer(self.football_renderer.hit((x, y))))
             return True
         if (action and action.name == 'word_grid' and not self.menu_open and not self.error
@@ -553,13 +618,10 @@ class Desktop:
                 and (event.type == pygame.MOUSEMOTION or event.button == 1)):
             x = (event.pos[0] - self.viewport.x) * 320 / self.viewport.width
             y = (event.pos[1] - self.viewport.y) * 480 / self.viewport.height
-            if event.type == pygame.MOUSEBUTTONDOWN and 0 <= x < 60 and 422 <= y < 480:
-                self.command(('menu',))
-            else:
-                phase = {pygame.MOUSEBUTTONDOWN: 'down', pygame.MOUSEMOTION: 'move',
-                         pygame.MOUSEBUTTONUP: 'up'}[event.type]
-                index = self.grid_renderer.hit((x, y), self.session.engine.word_grid)
-                self._attempt(lambda: self.session.grid_pointer(phase, index))
+            phase = {pygame.MOUSEBUTTONDOWN: 'down', pygame.MOUSEMOTION: 'move',
+                     pygame.MOUSEBUTTONUP: 'up'}[event.type]
+            index = self.grid_renderer.hit((x, y), self.session.engine.word_grid)
+            self._attempt(lambda: self.session.grid_pointer(phase, index))
             return True
         if self.menu_open and event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_F5, pygame.K_F9):
@@ -567,7 +629,24 @@ class Desktop:
             return True
         if self.menu_open and event.type in (pygame.MOUSEWHEEL, pygame.TEXTINPUT):
             return True
+        # Native table rows remain selected under the finger and dispatch on
+        # release. Keep the originating panel/deal so expiry cannot answer a
+        # successor, and dragging off a row cannot activate a different one.
+        if ((self.menu_open or action and action.name in ('choice', 'word_game'))
+                and event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION)
+                and (event.type == pygame.MOUSEMOTION or event.button == 1)):
+            x = (event.pos[0] - self.viewport.x) * SIZE[0] / self.viewport.width
+            y = (event.pos[1] - self.viewport.y) * SIZE[1] / self.viewport.height
+            hit = (next((command for rect, command in self.buttons if rect.collidepoint(x, y)), None)
+                   if self.viewport.collidepoint(event.pos) else None)
+            phase = {pygame.MOUSEBUTTONDOWN: 'down', pygame.MOUSEBUTTONUP: 'up',
+                     pygame.MOUSEMOTION: 'move'}[event.type]
+            command = self.press.update(phase, hit, self._press_token())
+            if command is not None:
+                self.command(command)
+            return True
         if event.type == pygame.KEYDOWN:
+            self.press.cancel()
             if event.key in (pygame.K_F5, pygame.K_F9):
                 self.command(('save' if event.key == pygame.K_F5 else 'load',))
             elif event.key == pygame.K_RETURN or (event.key == pygame.K_SPACE and action and action.name != 'text_input'):
@@ -597,6 +676,7 @@ class Desktop:
                         break  # A modal alert also stops the rest of a paste.
                     self.input_keyboard = True
         elif event.type == pygame.MOUSEWHEEL:
+            self.press.cancel()
             self.scroll = min(self.max_scroll, max(0, self.scroll - event.y * 40))
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.viewport.collidepoint(event.pos):
@@ -610,6 +690,8 @@ class Desktop:
         return True
 
     def tick(self, elapsed_ms):
+        if self.active and self.menu_open:
+            self.pause_elapsed_ms = min(PAUSE_OPEN_MS, self.pause_elapsed_ms + elapsed_ms)
         if self.active and not self.error and not self.menu_open:
             self._attempt(lambda: self.session.tick(elapsed_ms))
 

@@ -1,0 +1,18 @@
+{
+  "python": {
+    "version": "3.14.7",
+    "url": "https://github.com/beeware/Python-Apple-support/releases/download/3.14-b11/Python-3.14-iOS-support.b11.tar.gz",
+    "sha256": "b591f3301bd22a4f423c49c746cac9e55558b909fd14d6eb8327ccc62234ab7b"
+  },
+  "pillow": {
+    "version": "12.3.0",
+    "iphoneos": {
+      "url": "https://files.pythonhosted.org/packages/dc/01/001f65b68192f0228cc1dbbc8d2530ab5d58b61037ba0587f946fea607cd/pillow-12.3.0-cp314-cp314-ios_13_0_arm64_iphoneos.whl",
+      "sha256": "9cf95fe4d0f84c82d282745d9bb08ad9f926efa00be4697e767b814ce40d4330"
+    },
+    "iphonesimulator": {
+      "url": "https://files.pythonhosted.org/packages/1a/d2/0219746d0fd16fc8a84498e79452375be3797d3ce4044596ce565164b84f/pillow-12.3.0-cp314-cp314-ios_13_0_arm64_iphonesimulator.whl",
+      "sha256": "8728f216dcdb6e6d555cf971cb34076139ad74b31fc2c14da4fafc741c5f6217"
+    }
+  }
+}

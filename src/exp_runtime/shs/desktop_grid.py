@@ -2,11 +2,14 @@
 from functools import lru_cache
 import math
 
-import pygame
+from .. import graphics as pygame
+from ..desktop_pause import draw_pause_gear
 
 from ..ui_assets import read_ui
 from ..atlas import AtlasFont, SpriteAtlas
 from .grid_layout import clamp, ease, heading_lines, prompt_position, tutorial_box
+from .grid_motion import project, cube_faces
+from ..projection import draw_quad
 from ..menu import MenuStrings
 
 
@@ -76,12 +79,7 @@ class GridRenderer:
 
     @staticmethod
     def project(width, height, x, y):
-        # 000cc398 depth table; 000c7ef8 camera; 000c7f98 frustum.
-        depth = -3800 if height == 5 else -3400 if (width, height) in ((5, 3), (4, 4), (5, 4)) else -3000
-        x -= (width * 450 + (width - 1) * 72) / 2
-        y = (height * 450 + (height - 1) * 72) / 2 + 480 - y
-        z = depth - y * 0.5
-        return 160 + 400 * x / -z, 240 - 400 * (y * math.cos(math.pi / 6) - 300) / -z
+        return project(width, height, x, y)[:2]
 
     def geometry(self, game):
         self.cells = self.board_geometry(game.problem)
@@ -114,17 +112,22 @@ class GridRenderer:
 
     def quad(self, image, points):
         """Scanline projection of the original sprite onto the board plane."""
-        tl, tr, br, bl = points
-        top, bottom = round(tl[1]), round(bl[1])
-        height = max(1, bottom - top)
-        source = pygame.transform.smoothscale(image, (image.get_width(), height))
-        for y in range(height):
-            t = (y + .5) / height
-            left = tl[0] + (bl[0] - tl[0]) * t
-            right = tr[0] + (br[0] - tr[0]) * t
-            row = source.subsurface((0, y, source.get_width(), 1))
-            self.canvas.blit(pygame.transform.smoothscale(row, (max(1, round(right - left)), 1)),
-                             (round(left), top + y))
+        pygame.project_quad(self.canvas, image, points)
+
+    @lru_cache(maxsize=256)
+    def cell_image(self, frame, char, picture, glint=-1):
+        tile = self.frame(446, frame).copy()
+        if glint >= 0:
+            tile.blit(pygame.transform.smoothscale(self.frame(446, 35 + glint), tile.get_size()), (0, 0))
+        glyph = self.art.image(picture) if picture is not None else self.glyph(522, char)
+        if glyph is not None:
+            # 000c8c30: pictures occupy 382.5 of the 450 world units;
+            # the 85px letter font is drawn at scale 4.285714.
+            ratio = tile.get_height() * (.85 if picture is not None else 85 / 105) / glyph.get_height()
+            letter = pygame.transform.smoothscale(glyph, (max(1, round(glyph.get_width() * ratio)),
+                                                           max(1, round(glyph.get_height() * ratio))))
+            tile.blit(letter, letter.get_rect(center=tile.get_rect().center))
+        return tile
 
     def backdrop(self, game, background_id):
         self.canvas.fill((0, 0, 0))
@@ -202,38 +205,38 @@ class GridRenderer:
                   if transition and game.phase == 4 else game.tutorial and p.hide_board)
         if game.phase in (-2, -1) or hidden:
             return
-        for i, (quad, rect) in enumerate(cells):
+        faces = []
+        for i, (_, rect) in enumerate(cells):
             col, row = i % p.width, i // p.width
             delay = (p.height - 1 + col - row) * 80
-            size, flip, old_face = 1., 1., False
+            size, angle = 1., 0.
             if outgoing:
                 size = ease(1 - clamp((800 - game.phase_ms - delay) / 600), bounce=.8)
             elif transition and transition.mode == 'flip' and game.phase in (4, 2):
                 age = 800 - game.phase_ms if game.phase == 4 else 2600 - game.phase_ms
                 angle = (1 - clamp((age - max(1, delay)) / 700)) * math.pi
-                flip, old_face = abs(math.cos(angle)), angle > math.pi / 2
             elif game.phase in (2, 6) and (not transition or transition.mode == 'shrink'):
                 size = ease(clamp((game.board_entry_ms - delay) / 600), bounce=.8)
             elif game.phase == 0:
                 size = clamp((2800 - game.phase_ms) / 1400)
-            if size <= 0 or flip < .02:
+            if not outgoing and i in game.pop_ms:
+                size = ease(clamp((600 - game.pop_ms[i]) / 600), bounce=.8)
+            if size <= 0:
                 continue
-            char = transition.board[i] if old_face else board[i]
             selected = not outgoing and i in game.selection
             bad = not outgoing and i in game.bad_prefix
-            tile = self.frame(446, 33 if bad else 43 if selected else 41 if p.highlight and i in starts else 15).copy()
-            picture = game.symbols.get(ord(char))
-            glyph = self.art.image(picture) if picture is not None else self.glyph(522, char)
-            if glyph is not None:
-                # 000c8c30: pictures occupy 382.5 of the 450 world units;
-                # the 85px letter font is drawn at scale 4.285714.
-                ratio = tile.get_height() * (.85 if picture is not None else 85 / 105) / glyph.get_height()
-                letter = pygame.transform.smoothscale(glyph, (max(1, round(glyph.get_width() * ratio)),
-                                                               max(1, round(glyph.get_height() * ratio))))
-                tile.blit(letter, letter.get_rect(center=tile.get_rect().center))
-            cx, cy = rect.center
-            quad = tuple((cx + (x - cx) * size * flip, cy + (y - cy) * size) for x, y in quad)
-            self.quad(tile, quad)
+            frame = 33 if bad else 43 if selected else 41 if p.highlight and i in starts else 15
+            shine = game.glint_ms - delay
+            glint = min(5, shine // 100) if 0 <= shine <= 600 else -1
+            for depth, face, quad in cube_faces(p.width, p.height, col, row, angle, size):
+                if face == 'side':
+                    tile = self.frame(446, frame + 1)
+                else:
+                    char = transition.board[i] if face == 'back' and transition else board[i]
+                    tile = self.cell_image(frame, char, game.symbols.get(ord(char)), glint if face == 'front' else -1)
+                faces.append((depth, tile, quad))
+        for _, tile, quad in sorted(faces, key=lambda item: item[0]):
+            draw_quad(self.canvas, tile, quad)
         if outgoing or game.phase == 4:
             return
         paths = [(game.selection, False)]
@@ -326,9 +329,13 @@ class GridRenderer:
         self.hud(game)
         self.board(game)
         self.prompts(game)
+        for burst in game.explosions:
+            for fragment in burst:
+                self.blit(self.frame(446, 17 + int(fragment.age_ms * 12 / 1000) % 16),
+                          fragment.x, fragment.y, scale=fragment.scale, angle=-fragment.angle, center=True)
         self.banner(game)
         self.tutorial(game)
         # Keep the desktop pause control clear of the original bottom word list.
-        self.canvas.blit(self.art.frame(126, 49), (0, 408))
+        draw_pause_gear(self.canvas, self.art)
         target.blit(pygame.transform.smoothscale(self.canvas, target.get_size()), (0, 0))
         return [(pygame.Rect(0, 422, 60, 58), ('menu',))]

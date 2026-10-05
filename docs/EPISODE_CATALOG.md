@@ -163,6 +163,20 @@ be added explicitly through the episode file picker, drag/drop, or
 `ContentLibrary.add_episodes([path])` without adding any new EXPs. The sidecar
 is optional; the selected game's APK/IPA and EXP inputs remain sufficient to play.
 
+Episode ZIPs use the same import path on desktop, iOS and the CLI, during
+initial setup or later additions. The importer scans every subfolder inside
+the archive for EXPs and the selected game's catalog, and also finds ZIPs
+inside selected filesystem folders. A ZIP containing just a catalog can
+update existing categories. ZIPs nested inside another ZIP are not expanded.
+`__MACOSX` entries and AppleDouble `._` files are ignored.
+
+Members are read individually and stored under their EXP hashes; archive paths
+are never extracted. The library remains usable after the source ZIP is removed
+or the library is relocated. Duplicate paths, absolute/traversing paths,
+links, encrypted/unreadable members and invalid EXPs/catalogs reject the batch
+without changing the library. ZIP limits are 10,000 entries, 64 MiB per EXP,
+4 MiB per catalog and 2 GiB of selected uncompressed data per archive.
+
 Only normalized catalog metadata is retained in the library. The native
 options file, user strings, flags, and native progress are not copied or
 applied. Optional `library.json` field:

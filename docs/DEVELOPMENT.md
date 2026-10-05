@@ -40,9 +40,11 @@ bounded diagnostic, not an automated episode playthrough.
 | Layer | Modules |
 | --- | --- |
 | Content and local import | `content`, `shs.content`, `shs.builtin_episode`, `cod.content`, `episode_catalog` |
+| RAR episode decoding | `rar` (OS libarchive on Apple, bundled decoder in Windows/Linux builds) |
 | KiWi decoding and execution | `decode.bytecode`, `vm`, `trace` |
 | Host services and saved sessions | `engine`, `runtime`, `shs.services`, `cod.services` |
 | Dialogue, choices and panel clocks | `dialogue`, `choice`, `dialogue_animation`, `relationships`, `loading` |
+| Optional choice previews | `choice_hints` (bounded copies; no live state, save or host side effects) |
 | Mini games and random streams | `minigames`, `randomness`, `shs.word_grid`, `shs.football` |
 | Native formats and geometry | `fonts`, `ui_assets`, `atlas`, `menu` |
 | Desktop application | `launcher`, `application`, `desktop`, `desktop_*`, `shs.desktop_*` |

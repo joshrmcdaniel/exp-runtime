@@ -57,6 +57,9 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --extra build
 
+      - name: Prepare RAR decoder
+        run: uv run --locked --extra build python tools/build_rar.py
+
       - name: Run tests without game content
         run: uv run --locked --extra build python -m unittest discover -s tests
 

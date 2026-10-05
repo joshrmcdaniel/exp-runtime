@@ -17,6 +17,8 @@ dist/
 *.[aA][pP][kK]
 *.[iI][pP][aA]
 *.[eE][xX][pP]
+*.[zZ][iI][pP]
+*.[rR][aA][rR]
 *.[kK][iI][wW]
 *.[sS][aA][vV]
 *.shs-save.json
@@ -53,5 +55,14 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.xcarchive/
+/ios/Signing.local.xcconfig
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
 .env
 .env.*

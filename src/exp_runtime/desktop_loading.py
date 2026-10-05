@@ -1,7 +1,7 @@
 """Service 91's original loading panels, strings, fonts, and five-frame art."""
 from functools import lru_cache
 
-import pygame
+from . import graphics as pygame
 
 from .fonts import TextStyle
 from .menu import MenuStrings

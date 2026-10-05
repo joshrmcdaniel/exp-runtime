@@ -608,7 +608,7 @@ theme pack. Initial text `Free Time` selects blue pack 204; otherwise pack 236.
 Updating an existing badge retains its original skin and entrance progress.
 Text color is (69,107,176) for `Free Time`, otherwise (223,163,52).
 
-Layout node 2 centers the icon at (38,30). Text uses ArialRoundedMTBold16,
+Layout node 2 centers the icon at (38,30). Android text uses ArialRoundedMTBold16,
 nominal height 14, gap 1, content size 110 × 20; the native function has string-length and
 named-label positioning exceptions, represented by `SceneBadge.text_position`.
 The length-15-through-17 branch sets GL node position (123,55), taking
@@ -622,6 +622,21 @@ Every wrapped line starts at that same X. Text draws downward from the
 label's local zero, so the half-height is added when converting to screen Y;
 subtracting it clips the first line into the badge's upper border. The desktop
 uses this native transform rather than centering the measured text block.
+
+The iOS outline-font adapter instead uses **ArialMT 14**, zero added line gap,
+and layout 67 node 3's **(68,15,98,30)** text region. SHS/CoD
+`GameModel::render` **00022ba8 / 00011a1c** passes flags **0x19** to
+`CSFont::drawTextInRegion`: wrap, left-align, vertically center. The font comes
+from `setBubbleSex` **00023db4 / 0001143c** and `initFonts`
+**0003c440 / 000230b8**. It is not the larger rounded Android bitmap label.
+Applying the bitmap font role and offsets to outline fonts wrapped “Before
+School” into the lower gold stripe. The shared renderer now applies the
+verified region and cap-height line boxes to every outline scene caption.
+If a substitute face's ink exceeds that region, drawing scales/translates
+the complete label into it without changing its text or saved state. This
+fallback fit is a compatibility guard, not an observed native font substitution.
+Badge color selection and the common entrance placement/timing remain the
+Android behavior above; iOS-specific color/entrance parity is not claimed.
 
 The badge moves horizontally in 200 ms from center x=-85.5 to x=100.
 Ad-free top inset is 10 (`FUN_0007d280`); the original ad-enabled path uses 55.

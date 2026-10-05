@@ -162,7 +162,15 @@ descent come from the selected SFNT face, including TTC face selection. For
 older fonts without an OS/2 cap-height field, the H/O average reproduces the
 metrics observed with local CoreGraphics for Arial Rounded, Trebuchet and
 the supplied Pajama Hip. These are font metadata; dialogue uses the shared
-v0.1.3 nominal line heights and gaps described below, not cap-height spacing.
+layout with the native outline-font line boxes described below.
+
+Scene captions use Arial 14 in layout 67's text region, with cap-height line
+boxes, wrapping and vertical centering. SHS/CoD `GameModel::render`
+**00022ba8 / 00011a1c**, `setBubbleSex` **00023db4 / 0001143c**, and
+`initFonts` **0003c440 / 000230b8** verify that role. Android's rounded bitmap
+caption offsets are separate. The shared outline adapter bounds substitute
+ink to the region, preventing a wrapped caption from entering the lower stripe;
+see [scene-label evidence and limits](STORY_SERVICES.md#scene-label-and-dialogue-emphasis-services-89-90).
 
 This rendering path has not been proven pixel-identical to iOS CoreGraphics.
 Fallback faces can change wrapping, pagination and name-width limits. Save

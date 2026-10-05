@@ -11,6 +11,42 @@ from test_runtime import Resources, answer_screen, branching_program
 
 @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is not installed')
 class DesktopTests(unittest.TestCase):
+    def test_continue_tab_tracks_box_theme_and_reveal_without_drawing_side_effects(self):
+        from unittest.mock import Mock, patch
+        from exp_runtime.desktop_dialogue import DialogueRenderer
+        from exp_runtime.dialogue_animation import DialogueAnimation
+        from exp_runtime.ui_assets import Rect
+        import pygame
+        os.environ['SDL_VIDEODRIVER'] = 'dummy'
+        pygame.display.init(); pygame.display.set_mode((320, 480))
+        self.addCleanup(pygame.quit)
+        text = Mock()
+        text.font.return_value = SimpleNamespace(cap_height=10)
+        text.layout.return_value = SimpleNamespace(ink_bounds=(0, 0, 50, 10))
+        renderer = DialogueRenderer(None, text, None)
+        def frame(asset, index):
+            self.assertEqual(asset, 126)
+            tab = pygame.Surface((99, 17), pygame.SRCALPHA)
+            tab.fill((index * 20, 100, 150, 255))
+            return tab
+        renderer.frame = frame
+        motion = DialogueAnimation(10)
+        with patch('exp_runtime.desktop_dialogue.MenuStrings.load', return_value={29: 'Continue'}):
+            for theme, index in ((1, 5), (2, 3), (3, 6), (-1, 4)):
+                for box in (Rect(13, 55, 294, 68), Rect(25, 115, 130, 40)):
+                    renderer.canvas.fill((0, 0, 0))
+                    renderer.draw_continue(box, theme, motion)
+                    self.assertEqual(tuple(renderer.canvas.get_at((box.x + box.width - 50, box.y + box.height))[:3]), (0, 0, 0))
+                    motion.settle()
+                    renderer.draw_continue(box, theme, motion)
+                    self.assertEqual(tuple(renderer.canvas.get_at((box.x + box.width - 50, box.y + box.height + 8))[:3]),
+                                     (index * 20, 100, 150))
+                    self.assertEqual(tuple(renderer.canvas.get_at((box.x + box.width, box.y + box.height + 8))[:3]), (0, 0, 0))
+                    self.assertEqual(motion.continue_ms, 250)
+                    motion.next_page(10)
+            self.assertEqual(text.draw_layout.call_count, 4)
+            self.assertTrue(all(call.args[1] == 'TrebuchetMS_Bold14' for call in text.draw_layout.call_args_list))
+
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user library is not present')
     def test_dialogue_motion_renders_between_states_and_pauses_without_advancing_vm(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
@@ -124,6 +160,8 @@ class DesktopTests(unittest.TestCase):
                     page = ui.choice_renderer.page(s)
                     row = page.rows[s.engine.word_game.weights.index(1)]
                     pointer(pygame.MOUSEBUTTONDOWN, row.rect.center)
+                    self.assertEqual(s.engine.word_game.score, 0)
+                    pointer(pygame.MOUSEBUTTONUP, row.rect.center)
                     self.assertEqual(s.engine.word_game.score, 1)
                 ui.render(); self.assertIsNone(ui.error)
 
@@ -294,9 +332,49 @@ class DesktopTests(unittest.TestCase):
             x = ui.viewport.x + rect.centerx * ui.viewport.width / 480
             y = ui.viewport.y + rect.centery * ui.viewport.height / 720
             ui.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=(x, y)))
+            self.assertEqual(ui.session.snapshot(), saved)
+            ui.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=(x, y)))
             self.assertEqual(ui.session.pending.details['text'], 'Went left.')
             self.assertIsNone(ui.error)
             self.assertFalse(ui.handle_event(pygame.event.Event(pygame.QUIT)))
+
+    def test_held_choice_cancels_on_drag_and_deal_change(self):
+        os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
+        import pygame
+        from exp_runtime.desktop import Desktop
+        from test_minigames import word_resources
+        self.addCleanup(pygame.quit)
+        ui = Desktop(Session(word_resources()), audio=False)
+        ui.tick(400)
+        # Authored host buttons exercise the production input path without art.
+        ui.viewport = pygame.Rect(0, 0, 480, 720)
+        ui.buttons = [(pygame.Rect(20, 20, 100, 50), ('choose', 0)),
+                      (pygame.Rect(20, 80, 100, 50), ('choose', 1))]
+        def pointer(kind, pos=(40, 40)):
+            ui.handle_event(pygame.event.Event(kind, button=1, pos=pos))
+        before = ui.session.snapshot()
+        pointer(pygame.MOUSEBUTTONDOWN)
+        self.assertEqual(ui.press.pressed, ('choose', 0))
+        self.assertEqual(ui.session.snapshot(), before)
+        pointer(pygame.MOUSEMOTION, (40, 100))
+        self.assertIsNone(ui.press.pressed)
+        pointer(pygame.MOUSEBUTTONUP, (40, 100))
+        self.assertEqual(ui.session.snapshot(), before)
+        pointer(pygame.MOUSEBUTTONDOWN)
+        pointer(pygame.MOUSEMOTION, (-1, -1))
+        pointer(pygame.MOUSEMOTION)
+        self.assertEqual(ui.press.pressed, ('choose', 0))
+        pointer(pygame.MOUSEBUTTONUP)
+        self.assertEqual(ui.session.engine.word_game.round, before['engine']['word_game']['round'] + 1)
+        pointer(pygame.MOUSEBUTTONDOWN)
+        ui.session.answer(0)  # Another input/round invalidates the old finger.
+        changed = ui.session.snapshot()
+        pointer(pygame.MOUSEBUTTONUP)
+        self.assertEqual(ui.session.snapshot(), changed)
+        pointer(pygame.MOUSEBUTTONDOWN)
+        ui.cancel_pointer()
+        pointer(pygame.MOUSEBUTTONUP)
+        self.assertEqual(ui.session.snapshot(), changed)
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user library is not present')
     def test_original_dialogue_fonts_on_opening_and_saved_choice_branches(self):

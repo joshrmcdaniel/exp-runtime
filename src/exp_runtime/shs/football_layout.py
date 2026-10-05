@@ -27,6 +27,12 @@ def team_name(strings, selector):
     return strings[166 + selector] if 1 <= selector <= 9 else ''
 
 
+def score_strip(home_width, away_width):
+    """SHS iOS 00088a60: select the authored strip from measured team names."""
+    width = home_width + away_width + 82
+    return (-40, 51) if width < 92 else (-39, 62) if width < 114 else (-38, 73)
+
+
 def feedback_text(game, strings, index):
     if not game.message_ids:
         # Pre-v8 saves retain the text they actually recorded for this play.

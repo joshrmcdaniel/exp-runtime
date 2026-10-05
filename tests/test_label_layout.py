@@ -10,7 +10,7 @@ import unittest
 from exp_runtime.dialogue import DialogueLayout
 from exp_runtime.fonts import BitmapFont, Glyph, TextStyle, layout_label
 from exp_runtime.runtime import SaveError, Session
-from exp_runtime.scene_badge import SceneBadge
+from exp_runtime.scene_badge import SceneBadge, outline_badge_text
 from exp_runtime.speaker_names import NameFontState, SpeakerNames, outline_speaker_label, speaker_label
 from exp_runtime.ui_assets import Rect
 from test_runtime import Resources, answer_screen, host_call, text_words
@@ -392,6 +392,29 @@ class NativeLabelTests(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is not installed')
 class BadgeDrawingTests(unittest.TestCase):
+    def test_outline_badge_wraps_and_bounds_substitute_ink_in_the_native_region(self):
+        from exp_runtime.ios_fonts import IOSFont
+        # Normal and deliberately oversized substitute glyphs, authored here.
+        for width, height, bearing in ((6, 10, 4), (12, 20, -9), (110, 42, -12)):
+            glyphs = {c: Glyph(c, 0, 0, width, height, -2, bearing, width + 1)
+                      for c in range(32, 127)}
+            font = IOSFont('Authored outline', 14, 14, '', glyphs, {}, 10, 3)
+            region = Rect(68, 15, 98, 30)
+            for text in ('Before School', 'Morning', 'A longer scene caption', 'Wideglyph'):
+                with self.subTest(width=width, text=text):
+                    layout, (x, y), scale = outline_badge_text(text, font, region, (200, 150, 50))
+                    left, top, right, bottom = layout.ink_bounds
+                    self.assertGreaterEqual(x + left * scale, region.x - 1e-6)
+                    self.assertLessEqual(x + right * scale, region.x + region.width + 1e-6)
+                    self.assertGreaterEqual(y + top * scale, region.y - 1e-6)
+                    self.assertLessEqual(y + bottom * scale, region.y + region.height + 1e-6)
+                    self.assertEqual(''.join(chr(g.glyph.code) for g in layout.glyphs),
+                                     text.replace(' ', ''))
+                    if width == 6 and text == 'Before School':
+                        self.assertEqual(len(layout.lines), 1)
+                        self.assertEqual(scale, 1)
+                        self.assertEqual(y, 25)
+
     def test_badge_text_is_inside_the_frame_and_left_aligned_on_every_line(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'

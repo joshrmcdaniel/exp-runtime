@@ -1,7 +1,8 @@
 """Original episode intros and week cards, drawn from the player's APK."""
 from functools import lru_cache
 
-import pygame
+from . import graphics as pygame
+from .desktop_pause import draw_pause_gear
 
 from .atlas import AtlasFont
 from .content import ContentError
@@ -74,7 +75,7 @@ class TitleRenderer:
         self.canvas.set_clip(None)
         self.draw_label(subtitle, motion.subtitle_scale_y)
         self.canvas.blit(self.art.frame(126, 47), (0, 431))
-        self.canvas.blit(self.art.frame(126, 49), (0, 408))
+        draw_pause_gear(self.canvas, self.art)
         self.text.draw_layout(self.canvas, 'ArialMT14', self.hint(), 180, 455)
         target.blit(pygame.transform.smoothscale(self.canvas, target.get_size()), (0, 0))
         return [(pygame.Rect(0, 422, 60, 58), ('menu',)),

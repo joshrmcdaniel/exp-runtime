@@ -10,7 +10,7 @@ import unittest
 from exp_runtime.shs.football import FootballTarget, Play
 from exp_runtime.shs.football_layout import (countdown_motion, feedback_motion, feedback_text,
                                          footer_id, heading_id, help_motion, legend_codes,
-                                         target_position, team_name, yard_glyphs)
+                                         target_position, team_name, yard_glyphs, score_strip)
 from exp_runtime.runtime import SaveError, Session
 from test_football import resources, start_play, wait_for
 
@@ -26,6 +26,25 @@ def game_session():
 
 
 class FootballLayoutTests(unittest.TestCase):
+    def test_scoreboard_keeps_team_names_and_both_scores_on_one_row(self):
+        from exp_runtime.shs.desktop_football import FootballRenderer
+        renderer = FootballRenderer.__new__(FootballRenderer)
+        widths = {'You': 21, 'Opp': 23, '14': 15, '7': 8, '-': 5}
+        font = SimpleNamespace(width=lambda text: widths[text])
+        renderer.score_font = lambda: (font, None)
+        renderer.strings = lambda: {167: 'You', 168: 'Opp'}
+        renderer.atlas = lambda: SimpleNamespace(literals=lambda frame: ((0, -154, -8),))
+        renderer.score_text = lambda text: text
+        strips, placed = [], []
+        renderer.composite = lambda *args: strips.append(args)
+        renderer.canvas = SimpleNamespace(blit=lambda image, point: placed.append((image, point)))
+        renderer.scoreboard(SimpleNamespace(teams=[1, 2], home=14, away=7))
+        self.assertEqual(strips, [(-38, 253, 50)])
+        self.assertEqual(placed, [('You', (123, 42)), ('14', (149, 42)),
+                                  ('-', (169, 42)), ('7', (183, 42)), ('Opp', (200, 42))])
+        self.assertEqual([score_strip(w, 0) for w in (0, 9, 10, 31, 32)],
+                         [(-40, 51), (-40, 51), (-39, 62), (-39, 62), (-38, 73)])
+
     def test_team_and_help_content_follow_all_six_script_plans(self):
         g = game_session().engine.football
         strings = {i: f'Label {i}' for i in range(42, 180)}

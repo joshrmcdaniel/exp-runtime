@@ -25,6 +25,27 @@ class MusicCueTests(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is not installed')
 class MusicPlaybackTests(unittest.TestCase):
+    def test_menu_click_uses_selected_library_and_sound_preference(self):
+        from exp_runtime.application import Application
+        for game, resource in (('shs', 8010), ('cod', 8005)):
+            with self.subTest(game=game):
+                app = Application.__new__(Application)
+                app.selected_game, app.audio = game, True
+                app.library = Mock(read_asset=Mock(return_value=b'authored click'))
+                app.state = Mock(sound=False, music=True)
+                with patch('pygame.mixer.Sound') as sound:
+                    app._click_sound()
+                    sound.assert_not_called()
+                    app.state.sound, app.state.music = True, False
+                    app._click_sound()
+                    app._click_sound()
+                    app.library.read_asset.assert_called_once_with(resource)
+                    self.assertEqual(sound.call_args.kwargs['file'].getvalue(), b'authored click')
+                    self.assertEqual(sound.return_value.play.call_count, 2)
+                    app.state.sound = False
+                    app._click_sound()
+                    self.assertEqual(sound.return_value.play.call_count, 2)
+
     def make_ui(self, service=80, music=8202):
         from exp_runtime.desktop import Desktop
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
@@ -162,13 +183,20 @@ class MusicPlaybackTests(unittest.TestCase):
         app.selected_game = 'shs'
         app.game, app.selected, app.audio, app.active = ui, resources.record['id'], True, True
         app.window = ui.window
+        app.library = resources
+        app.menu_music = Mock()
+        app.menu_music_token = None
+        app.menu_music_loaded = app.menu_music_paused = False
         app.state = Mock(music=True, sound=True)
         app.state.title.return_value = resources.record['titles'][0]
-        app.show, app.refresh_saves = Mock(), Mock()
+        app.show = Mock(side_effect=lambda screen, **_: setattr(app, 'screen', screen))
+        app.refresh_saves = Mock()
         saved = ui.session.snapshot()
         with patch('pygame.mixer.music') as music, patch('pygame.mixer.stop'):
             ui._sync_audio()
             app.return_to_menu()
+            app._sync_menu_music()
+            app.menu_music.play.assert_called_once_with()
             music.pause.assert_called_once_with()
             app.start()
             ui._sync_audio()
@@ -184,6 +212,75 @@ class MusicPlaybackTests(unittest.TestCase):
             self.assertIsNot(app.game, ui)
             self.assertEqual(music.load.call_count, 2)
             self.assertEqual(music.play.call_count, 2)
+
+    def test_menu_uses_each_games_theme_and_obeys_mute_focus_and_game_changes(self):
+        from exp_runtime.application import Application
+        for game, resource in (('shs', 8215), ('cod', 8209)):
+            with self.subTest(game=game):
+                app = Application(audio=False, game_key=game, directory=Path('/no-authored-library'))
+                self.addCleanup(app.close)
+                import pygame
+                pygame.mixer.init()
+                app.audio = True
+                app.library = Mock(read_asset=Mock(return_value=b'authored theme'))
+                app.state = Mock(music=True)
+                app.menu_music = Mock()
+                app.screen = 'main'
+                app._sync_menu_music()
+                app._sync_menu_music()
+                app.library.read_asset.assert_called_once_with(resource)
+                app.menu_music.play.assert_called_once_with()
+                self.assertEqual(app.menu_music.load.call_args.args[0].getvalue(), b'authored theme')
+                app.active = False
+                app._sync_menu_music()
+                app.menu_music.pause.assert_called_once_with()
+                app.active = True
+                app._sync_menu_music()
+                app.menu_music.unpause.assert_called_once_with()
+                app.state.music = False
+                app._sync_menu_music()
+                self.assertFalse(app.menu_music_loaded)
+                app.state.music = True
+                app._sync_menu_music()
+                self.assertEqual(app.menu_music.play.call_count, 2)
+                app.screen = 'game'
+                app._sync_menu_music()
+                self.assertFalse(app.menu_music_loaded)
+                app.screen = 'main'
+                app._sync_menu_music()
+                self.assertEqual(app.menu_music.play.call_count, 3)
+                app.release_library()
+                self.assertFalse(app.menu_music_loaded)
+                app.audio = False
+
+    def test_real_menu_channel_leaves_paused_story_stream_intact(self):
+        from exp_runtime.graphics import create_menu_music
+        import pygame
+        ui, resources = self.make_ui(music=8201)
+        sample = BytesIO()
+        with wave.open(sample, 'wb') as stream:
+            stream.setnchannels(1)
+            stream.setsampwidth(2)
+            stream.setframerate(8000)
+            stream.writeframes(b'\0\0' * 16000)
+        resources.read_asset.return_value = sample.getvalue()
+        pygame.mixer.init(frequency=8000, size=-16, channels=1, buffer=128)
+        ui._sync_audio()
+        ui.command(('menu',))
+        position = pygame.mixer.music.get_pos()
+        menu = create_menu_music()
+        menu.load(BytesIO(sample.getvalue()))
+        menu.play()
+        self.assertTrue(menu.channel.get_busy())
+        self.assertFalse(pygame.mixer.music.get_busy())
+        pygame.time.wait(50)
+        self.assertEqual(pygame.mixer.music.get_pos(), position)
+        menu.pause()
+        menu.unpause()
+        menu.stop()
+        ui.command(('resume',))
+        self.assertTrue(pygame.mixer.music.get_busy())
+        resources.read_asset.assert_called_once_with(8201)
 
     def test_real_mixer_freezes_and_resumes_authored_music_position(self):
         import pygame

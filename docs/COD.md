@@ -100,7 +100,8 @@ The owner supplied `decomp/cod/cod-native-1.jpg` and `cod-native-2.jpeg` on
 2026-10-05. Their Man/Sophie scenes corroborate the normal palette and titles
 attached to the top border. They remain private references, not test fixtures
 or bundled content. They do not establish full native parity for long names,
-animation, body wrapping, the continue button or footer.
+animation, body wrapping or the footer. Their Continue tab is corroborated
+by the native layer/artwork evidence below.
 
 The subsequently supplied `decomp/cod/cod-original-promo-ss.jpeg` adds a
 long-name reference: **Det. Mal / Fallon** appears on two lines straddling
@@ -112,6 +113,15 @@ The reference does not establish exact pixels from the resized promotional
 image, validate earlier detached name positions, or prove SHS-specific font
 metrics. It corroborates the corrected CoD palette.
 The promo remains private reference content, never a fixture or bundled asset.
+
+CoD has the same native Continue layer as SHS. `expandContinue`
+(`000103cc`, default-label overload `000107cc`) positions a 99×17 common-atlas
+tab below the dialogue box and expands it vertically over 250 ms. The default
+label is CoD string 26 (shared string role 29). `setBubbleSex` selects the
+skin's common frames 3–6. The shared renderer now draws this control for both
+games; [UI fidelity](UI_FIDELITY.md#dialogue-continue-tab) records the common
+geometry, font and save behavior. Read-only LLVM Thumb disassembly of the
+supplied armv6 slice supplements Ghidra where its ARM decoding is incorrect.
 
 Dialogue uses the [shared SHS skin and renderer](IPA.md#dialogue-text-placement),
 with both games' outline fonts following the same recovered CSFont rules.
@@ -141,6 +151,15 @@ at or above 26000. CoD cues use their exact source with zero seek offset;
 SHS's 8202→8201 and other segment aliases do not apply. Service 81's argument
 is a fade duration (`stopMusic`, `00042d70`), not a track selector. The current
 desktop stops immediately, as in the existing SHS audio approximation.
+
+CoD menu clicks use **8005** (`0x1f45`), recovered through read-only Ghidra
+inspection of `SHSEngine::buttonPressed` (`000249d0`) and
+`SHSWidgetMenu::buttonPressed` (`0003fd60`). These pass `false, -1` to
+`SHSSoundManager::playSound` (`000431cc`). The shared application now plays
+that source from the CoD base library when Sound is enabled, independently of
+Music. Native `SHSUIMenu::handleMenuSelection` (`000395ac`) also uses 8005 for
+ordinary modes 1/3; scored-choice mode 2 selects distinct feedback. This menu
+binding does not establish those story-choice or relationship sound rules.
 
 ## Services and current coverage
 
@@ -175,7 +194,7 @@ The CoD dispatcher is `SHSScript::syscall` at `0003354c`.
 Older saves stopped at 70, 94, 96 or 100 resume their retained call and its actual
 continuation without replaying earlier instructions or random draws. The
 outgoing portrait is recovered from the retained panel for the next dialogue.
-Save version remains 16; no new saved fields or library reimport are required.
+These service handlers do not add saved fields or require library reimport.
 
 The shared KiWi decoder accepted the 420 scripts in the 103 supplied external
 EXPs. Removing byte-identical EXP copies leaves 80 archives and 368 scripts,
@@ -189,7 +208,7 @@ colliding IDs, game/profile mismatch rejection, unavailable assets, legacy SHS
 saves, launcher migration and switching/checkpoint failures.
 
 Complete episode routes, all CoD service variants, exact iOS animation/font
-parity and CoD menu/relationship feedback sounds still require verification.
+parity and CoD story-choice/relationship feedback sounds still require verification.
 Unknown services stop explicitly; no score, choice, random result or next scene
 is invented to continue an unsupported episode.
 

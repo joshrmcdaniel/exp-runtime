@@ -1,7 +1,8 @@
 """Original service-78 portrait layout, artwork, and confirmation control."""
 from functools import lru_cache
 
-import pygame
+from . import graphics as pygame
+from .desktop_pause import draw_pause_gear
 
 from .fonts import TextStyle
 from .menu import MenuStrings
@@ -53,7 +54,7 @@ class CharacterPickerRenderer:
         self.text.draw_layout(self.canvas, 'PajamaHip26', title, 30, 67.5)
         self.canvas.blit(self.art.frame(126, 41), (205, 347))
         self.canvas.blit(self.art.frame(126, 47), (0, 431))
-        self.canvas.blit(self.art.frame(126, 49), (0, 408))
+        draw_pause_gear(self.canvas, self.art)
         if self.hint is None:
             self.hint = MenuStrings.load(self.resources.library)[37]
         hint = self.text.layout('ArialRoundedMTBold11', self.hint,

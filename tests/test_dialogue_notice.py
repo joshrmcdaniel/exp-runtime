@@ -153,6 +153,7 @@ class NoticeTests(unittest.TestCase):
         # The frontend must not spend notice time while its menu or focus is lost.
         ui = Desktop.__new__(Desktop)
         ui.session, ui.error, ui.menu_open, ui.active = s, None, True, True
+        ui.pause_elapsed_ms = 400
         remaining = s.engine.notice_ms
         ui.tick(1000)
         ui.menu_open, ui.active = False, False

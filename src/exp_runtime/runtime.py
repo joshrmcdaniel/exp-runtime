@@ -145,7 +145,8 @@ class Session:
         page = self.dialogue_page()
         details['page_end'] = page.end if page else len(details['text'])
 
-    def advance(self, *, max_steps: int = 100_000, max_events: int = 10_000) -> EngineAction:
+    def advance(self, *, max_steps: int = 100_000, max_events: int = 10_000,
+                observe=None) -> EngineAction:
         if self.pending is not None:
             return self.pending
         if max_steps < 1 or max_events < 1:
@@ -158,6 +159,8 @@ class Session:
             request = self.vm.run(remaining)
             if request.kind == StopKind.YIELD:
                 action = self.engine.dispatch(self.vm, resource_exists=self.resources.exists)
+                if observe is not None:
+                    observe(action)
                 if action.completed:
                     continue
                 if action.name == 'choice':
@@ -392,7 +395,7 @@ class Session:
         return self.advance()
 
     def snapshot(self) -> dict:
-        return dict(format='exp-runtime-save', version=16,
+        return dict(format='exp-runtime-save', version=18,
                     content=self.resources.identity, scene=self.scene,
                     script_sha256=digest(self.vm.program.to_bytes()),
                     vm=self.vm.snapshot(), engine=asdict(self.engine),
@@ -403,9 +406,16 @@ class Session:
     @classmethod
     def from_snapshot(cls, resources: EpisodeResources, state: dict):
         try:
-            if state['format'] not in ('shs-runtime-save', 'exp-runtime-save') or state['version'] not in range(1, 17):
+            if state['format'] not in ('shs-runtime-save', 'exp-runtime-save') or state['version'] not in range(1, 19):
                 raise SaveError('Unsupported save format or version')
             legacy = state['version'] == 1
+            if state['version'] < 18 and state['engine'].get('word_grid') is not None:
+                state = deepcopy(state)
+                state['engine']['word_grid'].update(pop_ms={}, explosions=[], glint_ms=100_000_000)
+            if state['version'] < 17 and state['engine'].get('dialogue_animation') is not None:
+                state = deepcopy(state)
+                motion = state['engine']['dialogue_animation']
+                motion['continue_ms'] = 250 if motion['complete'] else 0
             if state['version'] < 11:
                 state = deepcopy(state)
                 state['engine']['title_screen'] = None

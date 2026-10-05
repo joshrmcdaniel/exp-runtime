@@ -3,7 +3,7 @@ from functools import lru_cache
 from importlib.resources import files
 from io import BytesIO
 
-import pygame
+from . import graphics as pygame
 
 
 @lru_cache(maxsize=8)

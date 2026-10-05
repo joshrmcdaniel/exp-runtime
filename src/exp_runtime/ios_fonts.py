@@ -6,7 +6,9 @@ rasterization uses FreeType/Pillow, not the original CoreGraphics renderer.
 See docs/IPA.md for the resulting fidelity limits.
 """
 from dataclasses import dataclass
+import base64
 from io import BytesIO
+import json
 import os
 import logging
 from pathlib import Path
@@ -173,6 +175,20 @@ def render_font(library, name):
         if match is None:
             raise FontError(f'Unsupported IPA font role: {name}')
         face, size = match[1], int(match[2])
+    if sys.platform == 'ios':
+        # The host looks up the original system face, then the system default.
+        # Layout roles, colors and glyph history stay in this shared module.
+        import exp_platform
+        request = dict(operation='atlas', face=face, size=size, color=color, stroke=stroke)
+        if source is not None:
+            request['data'] = base64.b64encode(source.getvalue()).decode('ascii')
+        native = json.loads(exp_platform.font(json.dumps(request)))
+        glyphs = {values[0]: Glyph(*values) for values in native['glyphs']}
+        glyphs[202] = Glyph(202, 0, 0, 0, 0, 0, 0, glyphs[32].advance)
+        atlas = Image.open(BytesIO(base64.b64decode(native['png']))).convert('RGBA')
+        result = IOSFont(name, size, size, name + '.png', glyphs, {}, native['cap'], native['descent']), atlas
+        cache[name] = result
+        return result
     if source is None:
         sources = getattr(library, '_ios_font_sources', None)
         if sources is None:

@@ -5,13 +5,16 @@ This supplements service 94's arguments, play tables, scoring and callback in
 [MINIGAMES.md](MINIGAMES.md#4-service-94-football). The implementation is shared
 by all episodes and all six half/possession plans. Everything is drawn in the
 original 320 × 480 coordinate space before viewport scaling. All images,
-font descriptors and localized strings come from the player's APK.
+font descriptors and localized strings come from the player's APK or IPA.
+The score strip additionally uses the supplied SHS iOS executable as a native
+reference; its atlas parts and bitmap font match the APK.
 
 ## Resources and text
 
 | Resource | Purpose |
 | --- | --- |
 | 290 | ABGR sprite atlas: field, help panel, coaches, play symbols, digits, countdown, feedback strip and rings |
+| 524 / 525 | Sprite-atlas glyph sheet / CS metrics for the score strip; 15 pixels high in APK and IPA |
 | 540 / 541 | PNG glyph sheet / CS font metrics for result messages; height 52, gap 0 in the reference APK |
 | 701–704 | Image-pack down labels, selected by down 0–3; down 4 retains the fourth label |
 | 720–723 | Image-pack animated target shadow frames, 110 ms per frame |
@@ -70,10 +73,17 @@ at `(19,4)`. The down-label center is `(99,33)`. Native numeric routines
 `000b68b4` and `000b9e90` place distance and clock near `(186,37)` and
 `(165,37)`, including their distinct measurement, baseline and digit-spacing
 rules. The clock rounds remaining positive milliseconds upward to seconds.
-The score strip uses frame 36 ends and frame 37's stretched center. Team and
-score BM line origins are at Y 45, with centers X 133, 164, 195 and 224.
-The separately positioned dash follows `000ba440`; its placement, like the
-other unusual node coordinates, still needs a recording comparison.
+SHS iOS `drawHUD` **00088a60** selects score-strip composites -40/-39/-38
+from the measured team-name widths plus 82: below 92, below 114, or larger.
+It draws at `(253,50)`. The name/score font is `loadImageFont(523,522)` at
+**00088094**, semantic roles 525/524. Let `c = 253 + min(child.x) + offset`,
+where the three strip offsets are 51/62/73. All lettering starts at **Y 42**:
+home name ends at `c-28`, home score is centered in `[c-24,c-7)`, the dash in
+`[c-3,c+3)`, away score in `[c+7,c+24)`, and away name starts at `c+28`.
+`CSMasterImage::getCenterX` **00015320** supplies the negative minimum child
+offset. The same font and composite geometry are present in both supplied
+asset profiles. This replaces the previously stretched strip, BM labels and
+separate low dash; no scene-specific positioning is used.
 
 `000be110` constructs help with frame 64, size 306 × 197, settled at `(7,126)`.
 The title plaque is at `(13,117)`, with title string 76 or 77. The paragraph

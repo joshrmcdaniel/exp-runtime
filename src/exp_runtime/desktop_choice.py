@@ -2,9 +2,11 @@
 import math
 from functools import lru_cache
 
-import pygame
+from . import graphics as pygame
+from .desktop_pause import draw_pause_gear
 
 from .choice import BODY_FONT, FOOTER_FONT, ChoiceLayout
+from .choice_hints import preview_choices
 from .fonts import TextStyle
 from .ui_assets import Rect
 
@@ -15,6 +17,8 @@ class ChoiceRenderer:
         self.layout = None
         self.canvas = pygame.Surface((320, 480)).convert(32)
         self.cached_key = self.cached_page = None
+        self.hint_key = None
+        self.hints = ()
         self.viewport = pygame.Rect(0, 0, 320, 421)
 
     def page(self, session):
@@ -87,8 +91,11 @@ class ChoiceRenderer:
             timer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         self.canvas.blit(timer, position)
 
-    def draw(self, target, session, *, scroll=0, pointer=None):
+    def draw(self, target, session, *, scroll=0, pointer=None, pressed=None, choice_hints=False):
         page = self.page(session)
+        if choice_hints and self.hint_key != self.cached_key:
+            self.hints = preview_choices(session)
+            self.hint_key = self.cached_key
         scroll = min(page.max_scroll, max(0, scroll))
         self.viewport.height = page.timer_panel.y if page.timer_panel else 421
         self.canvas.set_clip(None)
@@ -106,8 +113,16 @@ class ChoiceRenderer:
         for row in page.rows:
             rect = pygame.Rect(row.rect.x, row.rect.y - scroll, row.rect.width, row.rect.height)
             hit = rect.clip(self.viewport)
-            if row.enabled and pointer is not None and hit.collidepoint(pointer):
-                color = (250, 214, 211, 180) if page.theme == 2 else (170, 225, 249, 180)
+            hint = (self.hints[row.index].kind if choice_hints and row.enabled
+                    and self.hint_key == self.cached_key and row.index < len(self.hints) else 'unknown')
+            color = {'gain': (189, 237, 199), 'loss': (251, 201, 199),
+                     'no_gain': (251, 201, 199), 'mixed': (251, 228, 175)}.get(hint)
+            if color is not None:
+                pygame.draw.rect(self.canvas, color, rect)
+            if row.enabled and (pressed == ('choose', row.index)
+                                or pointer is not None and hit.collidepoint(pointer)):
+                color = (tuple(round(channel * .9) for channel in color) + (255,) if color else
+                         (250, 214, 211, 180) if page.theme == 2 else (170, 225, 249, 180))
                 highlight = pygame.Surface(rect.size, pygame.SRCALPHA)
                 highlight.fill(color)
                 self.canvas.blit(highlight, rect)
@@ -165,7 +180,7 @@ class ChoiceRenderer:
                 delta = self.text.layout(BODY_FONT, f'{game.last_delta:+d}', 40, TextStyle(14, 0, color))
                 self.text.draw_layout(self.canvas, BODY_FONT, delta, 275, 365 + game.animation_ms / 10)
         self.canvas.blit(self.art.frame(126, 47), (0, 431))
-        self.canvas.blit(self.art.frame(126, 49), (0, 408))
+        draw_pause_gear(self.canvas, self.art)
         hint = 'Touch the best choice'
         style = TextStyle(11, 0, (185, 185, 185))
         footer = self.text.layout(FOOTER_FONT, hint, 246, style)

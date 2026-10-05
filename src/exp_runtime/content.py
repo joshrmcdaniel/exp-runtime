@@ -1,8 +1,10 @@
 """User-supplied game content, isolated from the distributable runtime.
 
-The APK or IPA is opened as data only. No native code is executed, and ZIP paths are
-never extracted to the filesystem. Imported files use content-derived names.
+APKs, IPAs and episode ZIPs/RARs are opened as data only. No supplied native code
+is executed, and archive paths are never used as output paths. Imported files use
+content-derived names.
 """
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 import hashlib
@@ -12,10 +14,12 @@ from pathlib import Path
 import plistlib
 import re
 import shutil
+import stat
 import struct
 import tempfile
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile, ZipFile, ZipInfo
 from xml.parsers.expat import ExpatError
+from zlib import error as ZlibError
 
 from .shs.audio import IOS_DOWNLOADED_MUSIC
 from .shs.content import NATIVE_MEMBER, _inspect_apk
@@ -26,6 +30,8 @@ from .games import COD_IOS, GAMES, PROFILES, SHS_ANDROID, SHS_IOS
 PROFILE = SHS_ANDROID
 IOS_PROFILE = SHS_IOS
 MAX_PAYLOAD = 64 * 1024 * 1024
+MAX_EPISODE_ZIP_MEMBERS = 10_000
+MAX_EPISODE_ZIP_BYTES = 2 * 1024 * 1024 * 1024
 
 
 class ContentError(ValueError):
@@ -162,17 +168,19 @@ class ExpArchive:
         return programs
 
 
-def _zip_read(apk: ZipFile, name: str) -> bytes:
-    kind = 'IPA' if str(apk.filename).lower().endswith('.ipa') else 'APK'
+def _zip_read(apk: ZipFile, name: str | ZipInfo, *, limit=MAX_PAYLOAD) -> bytes:
+    kind = Path(str(apk.filename)).suffix[1:].upper()
+    kind = kind if kind in ('IPA', 'APK') else 'ZIP'
+    label = name.filename if isinstance(name, ZipInfo) else name
     try:
-        info = apk.getinfo(name)
-        if info.file_size > MAX_PAYLOAD:
-            raise ContentError(f'{kind} member exceeds supported size: {name}')
+        info = name if isinstance(name, ZipInfo) else apk.getinfo(name)
+        if info.file_size > limit:
+            raise ContentError(f'{kind} member exceeds supported size: {label}')
         return apk.read(info)
     except KeyError:
-        raise ContentError(f'{kind} is missing {name}') from None
-    except (BadZipFile, RuntimeError, NotImplementedError) as error:
-        raise ContentError(f'Cannot read {kind} member {name}: {error}') from error
+        raise ContentError(f'{kind} is missing {label}') from None
+    except (BadZipFile, RuntimeError, NotImplementedError, EOFError, ZlibError) as error:
+        raise ContentError(f'Cannot read {kind} member {label}: {error}') from error
 
 
 def _ipa_game(identifier):
@@ -212,36 +220,172 @@ def _inspect_ipa(package: ZipFile):
     return root, details
 
 
+@dataclass(frozen=True)
+class _ZippedEpisodeInput:
+    package: ZipFile
+    member: ZipInfo
+    name: str
+
+    def read_bytes(self, *, limit=MAX_PAYLOAD):
+        return _zip_read(self.package, self.member, limit=limit)
+
+
+@dataclass(frozen=True)
+class _StagedEpisodeInput:
+    path: Path
+    name: str
+
+    def read_bytes(self, *, limit=MAX_PAYLOAD):
+        with self.path.open('rb') as stream:
+            data = stream.read(limit + 1)
+        if len(data) > limit:
+            raise ContentError(f'RAR member exceeds supported size: {self.name}')
+        return data
+
+
+def _episode_rar_inputs(path, catalog_name, stack):
+    from .episode_catalog import MAX_CATALOG_BYTES
+    from .rar import RarReader, RarError
+    stage = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='exp-rar-')))
+    episodes, sidecars, seen, total = [], [], set(), 0
+    try:
+        with RarReader(path) as reader:
+            for index, member in enumerate(reader):
+                if index >= MAX_EPISODE_ZIP_MEMBERS:
+                    raise ContentError('Episode RAR contains too many entries')
+                if member['size'] < 0:
+                    raise ContentError('Episode RAR has an unknown member size')
+                # Solid archives may decode skipped entries to build their
+                # dictionary, so bound all declared data, including ignored files.
+                total += member['size']
+                if total > MAX_EPISODE_ZIP_BYTES:
+                    raise ContentError('Episode RAR exceeds the supported total size')
+                normalized = member['name'].replace('\\', '/')
+                parts, name = normalized.split('/'), normalized.rsplit('/', 1)[-1]
+                is_catalog = name.lower() == catalog_name
+                if (member['mode'] == stat.S_IFDIR or not name or name.startswith('._')
+                        or any(part.casefold() == '__macosx' for part in parts)
+                        or not (is_catalog or name.lower().endswith('.exp'))):
+                    reader.skip()
+                    continue
+                if ('\0' in normalized or normalized.startswith('/') or '..' in parts
+                        or re.match(r'^[A-Za-z]:', normalized)):
+                    raise ContentError(f'Invalid episode RAR member path: {member["name"]}')
+                normalized = '/'.join(part for part in parts if part not in ('', '.'))
+                if member['mode'] not in (0, stat.S_IFREG) or member['link']:
+                    raise ContentError(f'Episode RAR member is not a regular file: {name}')
+                if normalized in seen:
+                    raise ContentError(f'Episode RAR contains duplicate member names: {normalized}')
+                seen.add(normalized)
+                if member['encrypted']:
+                    raise ContentError('Encrypted episode RARs are not supported; extract the EXP files first')
+                limit = MAX_CATALOG_BYTES if is_catalog else MAX_PAYLOAD
+                if member['size'] > limit:
+                    raise ContentError(f'RAR member exceeds supported size: {name}')
+                destination = stage / str(index)  # Never the archive's pathname.
+                with destination.open('wb') as output:
+                    reader.copy_to(output, member['size'])
+                source = _StagedEpisodeInput(destination, name)
+                (sidecars if is_catalog else episodes).append(source)
+    except RarError as error:
+        raise ContentError(f'Cannot import episode RAR {path.name}: {error}') from error
+    if not episodes and not sidecars:
+        raise ContentError(f'No EXP episodes or {catalog_name} found in {path.name}')
+    return episodes, sidecars
+
+
+def _episode_zip_inputs(package, catalog_name):
+    """Select data members without ever materializing their archive paths."""
+    from .episode_catalog import MAX_CATALOG_BYTES
+    members = package.infolist()
+    if len(members) > MAX_EPISODE_ZIP_MEMBERS:
+        raise ContentError('Episode ZIP contains too many entries')
+    episodes, sidecars, seen, total = [], [], set(), 0
+    for member in sorted(members, key=lambda member: member.filename):
+        normalized = member.filename.replace('\\', '/')
+        parts = normalized.split('/')
+        name = parts[-1]
+        if (member.is_dir() or not name or name.startswith('._')
+                or any(part.casefold() == '__macosx' for part in parts)):
+            continue
+        is_catalog = name.lower() == catalog_name
+        if not is_catalog and not name.lower().endswith('.exp'):
+            continue
+        if ('\0' in member.orig_filename or normalized.startswith('/') or '..' in parts
+                or re.match(r'^[A-Za-z]:', normalized)):
+            raise ContentError(f'Invalid episode ZIP member path: {member.filename}')
+        normalized = '/'.join(part for part in parts if part not in ('', '.'))
+        if stat.S_IFMT(member.external_attr >> 16) not in (0, stat.S_IFREG):
+            raise ContentError(f'Episode ZIP member is not a regular file: {member.filename}')
+        if normalized in seen:
+            raise ContentError(f'Episode ZIP contains duplicate member names: {normalized}')
+        seen.add(normalized)
+        limit = MAX_CATALOG_BYTES if is_catalog else MAX_PAYLOAD
+        if member.file_size > limit:
+            raise ContentError(f'ZIP member exceeds supported size: {member.filename}')
+        total += member.file_size
+        if total > MAX_EPISODE_ZIP_BYTES:
+            raise ContentError('Episode ZIP exceeds the supported total size')
+        source = _ZippedEpisodeInput(package, member, name)
+        (sidecars if is_catalog else episodes).append(source)
+    if not episodes and not sidecars:
+        raise ContentError(f'No EXP episodes or {catalog_name} found in {Path(package.filename).name}')
+    return episodes, sidecars
+
+
+@contextmanager
 def _episode_inputs(paths, *, game):
     """Collect EXPs and optional native category sidecars as one import batch."""
     from .episode_catalog import EpisodeCatalog, MAX_CATALOG_BYTES, read_options_catalog
     catalog_name = GAMES[game].CATALOG_FILENAME
-    episodes, sidecars, checked = {}, {}, set()
-    for candidate in paths:
-        path = Path(candidate)
-        if path.is_dir():
-            candidates = sorted(p for p in path.rglob('*') if p.is_file())
-        elif path.is_file() and (path.suffix.lower() == '.exp' or path.name.lower() == catalog_name):
-            candidates = [path]
-        else:
-            raise ContentError(f'Choose an EXP file, episode folder, or {catalog_name}: {path}')
-        for item in candidates:
-            if item.suffix.lower() == '.exp':
-                episodes[item.resolve()] = item
-                parent = item.parent.resolve()
-                if parent not in checked:
-                    checked.add(parent)
-                    for sibling in parent.glob('*'):
-                        if sibling.is_file() and sibling.name.lower() == catalog_name:
-                            sidecars[sibling.resolve()] = sibling
-            elif item.name.lower() == catalog_name:
-                sidecars[item.resolve()] = item
-    catalog = EpisodeCatalog()
-    for path in sidecars.values():
-        with path.open('rb') as stream:
-            data = stream.read(MAX_CATALOG_BYTES + 1)
-        catalog = catalog.merge(read_options_catalog(data, game=game))
-    return list(episodes.values()), catalog
+    episodes, sidecars, checked, checked_archives = {}, {}, set(), set()
+    # Keep archives open only for this batch, including validation and rollback.
+    # Each EXP is read on demand, so a collection is not loaded into RAM at once.
+    with ExitStack() as stack:
+        for candidate in paths:
+            path = Path(candidate)
+            if path.is_dir():
+                candidates = sorted(p for p in path.rglob('*') if p.is_file())
+            elif path.is_file() and (path.suffix.lower() in ('.exp', '.zip', '.rar') or path.name.lower() == catalog_name):
+                candidates = [path]
+            else:
+                raise ContentError(f'Choose an EXP file, episode ZIP/RAR, folder, or {catalog_name}: {path}')
+            for item in candidates:
+                if item.suffix.lower() in ('.zip', '.rar'):
+                    key = item.resolve()
+                    if key in checked_archives:
+                        continue
+                    checked_archives.add(key)
+                    if item.suffix.lower() == '.rar':
+                        zipped, catalogs = _episode_rar_inputs(item, catalog_name, stack)
+                    else:
+                        try:
+                            package = stack.enter_context(ZipFile(item))
+                        except (BadZipFile, UnicodeError) as error:
+                            raise ContentError(f'Invalid episode ZIP: {item.name}') from error
+                        zipped, catalogs = _episode_zip_inputs(package, catalog_name)
+                    for entries, sources in ((episodes, zipped), (sidecars, catalogs)):
+                        for index, source in enumerate(sources):
+                            entries[key, index] = source
+                elif item.suffix.lower() == '.exp':
+                    episodes[item.resolve()] = item
+                    parent = item.parent.resolve()
+                    if parent not in checked:
+                        checked.add(parent)
+                        for sibling in parent.glob('*'):
+                            if sibling.is_file() and sibling.name.lower() == catalog_name:
+                                sidecars[sibling.resolve()] = sibling
+                elif item.name.lower() == catalog_name:
+                    sidecars[item.resolve()] = item
+        catalog = EpisodeCatalog()
+        for path in sidecars.values():
+            if isinstance(path, (_ZippedEpisodeInput, _StagedEpisodeInput)):
+                data = path.read_bytes(limit=MAX_CATALOG_BYTES)
+            else:
+                with path.open('rb') as stream:
+                    data = stream.read(MAX_CATALOG_BYTES + 1)
+            catalog = catalog.merge(read_options_catalog(data, game=game))
+        yield list(episodes.values()), catalog
 
 
 def _apk_music_members(apk: ZipFile, ipa_members):
@@ -329,13 +473,13 @@ def import_game(apk_path: Path, episode_paths: list[Path], destination: Path, *,
                         episode_record(_zip_read(apk, name), rest, {kind + '_member': name})
         except BadZipFile as error:
             raise ContentError(f'The supplied {kind.upper()} is not a valid ZIP archive') from error
-        external, catalog = _episode_inputs(episode_paths, game=source_game)
-        for path in external:
-            data = path.read_bytes()
-            sha = digest(data)
-            episode_record(data, path.name, dict(file=f'content/{sha}.exp'))
-            if 'file' in records[sha]:
-                (staged / records[sha]['file']).write_bytes(data)
+        with _episode_inputs(episode_paths, game=source_game) as (external, catalog):
+            for path in external:
+                data = path.read_bytes()
+                sha = digest(data)
+                episode_record(data, path.name, dict(file=f'content/{sha}.exp'))
+                if 'file' in records[sha]:
+                    (staged / records[sha]['file']).write_bytes(data)
         if not records:
             raise ContentError('No episodes found; supply episode EXP files')
         profile = COD_IOS if source_game == 'cod' else IOS_PROFILE if kind == 'ipa' else PROFILE
@@ -585,10 +729,10 @@ class ContentLibrary:
         replaced. Duplicate filenames become aliases for catalog matching. A
         failed validation leaves the entire library unchanged.
         """
-        candidates, catalog = _episode_inputs(paths, game=self.game_id)
-        if not candidates and not catalog.entries:
-            raise ContentError('No EXP episodes found in the selected files or folders')
-        return self._install_episodes(((path.read_bytes(), path.name, {}) for path in candidates), catalog=catalog)
+        with _episode_inputs(paths, game=self.game_id) as (candidates, catalog):
+            if not candidates and not catalog.entries:
+                raise ContentError('No EXP episodes found in the selected files, ZIPs, RARs or folders')
+            return self._install_episodes(((path.read_bytes(), path.name, {}) for path in candidates), catalog=catalog)
 
     def ensure_builtin_episodes(self) -> int:
         """Upgrade a library using its retained game package, once per story."""

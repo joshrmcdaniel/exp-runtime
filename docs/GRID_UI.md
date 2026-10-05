@@ -6,10 +6,18 @@ in a **320 x 480**, top-left-origin viewport. Positions scale together when the
 desktop window changes size. Rules and script records are in
 [MINIGAMES.md](MINIGAMES.md#5-service-96-word-and-picture-grids).
 
-Evidence is the locally inspected `libshs09.so`; addresses below use the same
-Ghidra image base as the engine specification. No native code or original art
+Evidence is the locally inspected `libshs09.so` and SHS iOS `Surviving_HS`;
+addresses below identify iOS explicitly where applicable. No native code or original art
 is included in this repository. All artwork, fonts, labels, episode text and
 portraits are read from the player's imported content.
+
+The shared renderer projects solid tile faces, culls back faces and sorts
+visible polygons by camera depth. Desktop uses a Pillow perspective map;
+iOS receives the same inverse map and cached source texture for native bilinear
+sampling. Neither camera nor game geometry is duplicated in Swift. Tile art
+is cached by face, letter, picture and shine frame. Flat arrows retain the
+batched scanline path. Authored tests cover texture orientation, perspective,
+clipping, alpha, cache reuse and cube faces at successive flip angles.
 
 ## Resource and font contracts
 
@@ -119,9 +127,34 @@ heading fade while the outgoing board leaves.
 Tile changes retain the previous board for presentation. Equal-size animated
 boards turn from the old letters to the incoming letters; a dimension change
 shrinks the old board before the new board grows. Tile staggering follows
-`80 * (height - 1 + column - row)` milliseconds. The current software renderer
-projects faces and compresses their width for flips; it does not reproduce the
-native GL side faces and depth buffer.
+`80 * (height - 1 + column - row)` milliseconds. Flips turn about the Y axis
+over 700ms; tile pops use the 600ms overshoot curve with parameter .8.
+
+SHS iOS `draw3DCube` **00095f34** defines a 450×450×100 solid, at
+`(column*522+225, row*522+225, -50)`, with normal faces 15/16, selected
+43/44, highlighted 41/42 and bad-prefix 33/34 in atlas 446. Both front and
+back carry upright letters; the back retains the outgoing board during a
+flip. The fifth row's bottom cap extends ten units. `setup3DTransform`
+**00095338** uses the shared 30-degree camera; depth is -3800 for five rows,
+-3400 for 5×3, 4×4 and 5×4, otherwise -3000. Native `draw3D` **000942cc**
+uses a depth buffer; the shared software path instead sorts nonintersecting
+cube faces. It does not claim identical GL edge rasterization.
+
+Shine frames 35–40 play over 600ms with the same stagger, triggered 4000ms
+after committing round visuals (`setGlintEffect` **00096f58**, commit
+**00098894**). Successful words scatter eight fragments per selected tile,
+using frames 17–32 at twelve frames per second, then pop the tile back in.
+There are at most twenty live bursts. Evidence: Android **000c3cb0**,
+**000d072c**, and iOS `CubeExplosion::init` **0009542c**, draw **000946ac**,
+tick **00097c0c**, selection **0009a2fc**.
+
+Each fragment consumes twelve native engine random draws: signed offsets below
+50 for X/Y, signed X velocity below 250, signed Y velocity below 350 minus
+250, signed spin below 360, absolute angle below 360 and sprite age below
+5000ms. Each signed draw uses two RNG advances. Scale is
+`1+(tile_screen_y-150)*.0024242424`; gravity is 1600 pixels/second².
+Fragments retire at Y≥480. These are model side effects, so subsequent board
+generation sees the native draws; a render or restore consumes none.
 
 Blue hint arrows and orange player-trace arrows use atlas 446. Orange arrows
 have eight separately drawn frames, rather than rotating the rightward art:
@@ -157,6 +190,14 @@ Save version **7** adds these fields to `engine.word_grid`:
 | `banner` | Null or `{kind, enter_ms, hold_ms, age_ms}`; kind and timing pairs validated against the table above |
 | `transition` | Null or `{problem: GridProblem, board: [byte-character], starts: [cell-index], tutorial: bool, mode: "replace" / "flip" / "shrink"}` |
 
+Version **18** adds `pop_ms` (cell-index to 0–601ms remaining pop/delay),
+`glint_ms` (-4000 through 100,000,000ms visual clock), and `explosions`
+(up to twenty lists of one to eight fragments). Each fragment stores finite
+`x`, `y`, `scale`, `vx`, `vy`, `spin`, `angle` and integer `age_ms`.
+Bounds, timers, cell indices and fragment counts are validated on load.
+Versions 1–17 start the new effects inactive, retaining their original RNG
+state; omitted historical particle draws cannot be reconstructed.
+
 The existing `tutorial_entry_ms`, `phase_ms`, score and game clocks are also
 used for drawing. Rendering and pointer geometry do not advance clocks or draw
 random numbers. The desktop freezes these fields while paused or unfocused.
@@ -172,8 +213,8 @@ Verification includes authored font/layout and save tests, plus optional
 player-content rendering and resized-pointer tests. Football Star's sixteen
 tutorial records and subsequent 4 x 4 boards have been rendered and visually
 inspected locally. These checks do not establish pixel equivalence with an
-original device recording. Remaining work includes exact tile side faces,
-specular highlights, particle effects, ring pulse curves, flying score deltas,
-and all native frame-boundary ordering. Incoming board generation still occurs
+original device recording. Remaining work includes native selection opacity,
+ring pulse curves, flying score deltas, GL edge/depth rasterization, and exact
+per-cell delay/timer ordering at frame boundaries. Incoming board generation still occurs
 at phase-4 entry in the model; native can defer it until exit. None of these
 visual changes substitutes a minigame result or resumes the VM without play.

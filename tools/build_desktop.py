@@ -1,8 +1,9 @@
 """Build a native desktop app without original game assets.
 
-Run after `uv sync --locked --extra build`. Only LICENSE and the authored kiwi
-logo are explicitly collected as data. User game files, screenshots, saves and
-native decompilations have no path into the executable's resource collection.
+Run after `uv sync --locked --extra build`. Only licenses, runtime metadata and
+the authored kiwi logo are explicitly collected as data. User game files,
+screenshots, saves and native decompilations have no path into the executable's
+resource collection.
 """
 from pathlib import Path
 import os
@@ -42,6 +43,7 @@ def main():
                 '--specpath', str(stage), '--paths', str(root / 'src'), '--noupx',
                 '--add-data', str(root / 'LICENSE') + ':.',
                 '--add-data', str(logo) + ':exp_runtime/assets',
+                '--copy-metadata', 'exp-runtime',
                 '--exclude-module', 'tkinter']
         if sys.platform in ('darwin', 'win32'):
             icon = stage / ('kiwi.icns' if sys.platform == 'darwin' else 'kiwi.ico')
@@ -49,6 +51,10 @@ def main():
             args += ['--icon', str(icon)]
         if sys.platform == 'darwin':
             args += ['--osx-bundle-identifier', 'org.expruntime.player']
+        else:
+            from build_rar import build
+            binary, license = build()
+            args += ['--add-binary', str(binary) + ':.', '--add-data', str(license) + ':.']
         env = dict(os.environ, PYINSTALLER_CONFIG_DIR=str(work / 'pyinstaller-cache'))
         subprocess.run([*args, str(entry)], cwd=stage, env=env, check=True)
     print(f'Built desktop app in {output}')

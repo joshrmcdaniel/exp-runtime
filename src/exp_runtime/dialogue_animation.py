@@ -11,6 +11,7 @@ from .relationships import RelationshipAnimation, RelationshipChange
 LETTER_HZ = 30
 PORTRAIT_MS = 300
 NAME_FADE_MS = 300
+CONTINUE_MS = 250
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class DialogueAnimation:
     finish_step: int = 0
     wobble_direction: int = 0
     relationship: RelationshipAnimation | None = None
+    continue_ms: int = 0
 
     @classmethod
     def start(cls, details, variants, previous=None):
@@ -118,6 +120,10 @@ class DialogueAnimation:
     def name_alpha(self):
         return int(255 * progress(self.elapsed_ms - self.name_delay_ms, NAME_FADE_MS)) if self.changed else 255
 
+    @property
+    def continue_scale(self):
+        return progress(self.continue_ms, CONTINUE_MS) if self.complete else 0.0
+
     def _callbacks(self, elapsed_ms):
         # The native 3 ms selector reveals ONE source index per scheduler
         # update, discarding excess dt. Use its configured 30 fps cadence for
@@ -128,15 +134,21 @@ class DialogueAnimation:
     def tick(self, elapsed_ms):
         if self.relationship:
             self.relationship.tick(elapsed_ms)
+        end = self.elapsed_ms + elapsed_ms
         old = self._callbacks(self.elapsed_ms)
         self.elapsed_ms = min(self.duration_ms, self.elapsed_ms + elapsed_ms)
         due = self._callbacks(self.elapsed_ms) - old
-        if self.complete or due <= 0:
+        if self.complete:
+            self.continue_ms = min(CONTINUE_MS, self.continue_ms + elapsed_ms)
             return
+        if due <= 0:
+            return
+        needed = self.text_length + 1 - old
         if self.finish_requested:
             # Native input sets a flag. The next selector visits one index,
             # then a following callback unhides the whole label and completes.
-            if self.finish_step + due >= 2 or self.revealed == self.text_length:
+            needed = 1 if self.revealed == self.text_length else 2 - self.finish_step
+            if due >= needed:
                 self.revealed, self.complete = self.text_length, True
                 self.finish_step = 0
             else:
@@ -145,6 +157,12 @@ class DialogueAnimation:
         else:
             self.complete = self.revealed + due > self.text_length
             self.revealed = min(self.text_length, self.revealed + due)
+        if self.complete:
+            # iOS expandContinue waits for the end of typing, then expands
+            # vertically for 250 ms. Account for completion within this tick.
+            first = max(1, (self.text_delay_ms * LETTER_HZ + 999) // 1000)
+            finished = ((first - 1 + old + needed) * 1000 + LETTER_HZ - 1) // LETTER_HZ
+            self.continue_ms = min(CONTINUE_MS, max(0, end - finished))
 
     def finish(self):
         self.finish_requested = True
@@ -155,12 +173,14 @@ class DialogueAnimation:
         self.previous = None
         self.changed, self.page_turn = False, True
         self.elapsed_ms = self.revealed = self.finish_step = 0
+        self.continue_ms = 0
         self.complete = self.finish_requested = False
 
     def settle(self):
         """Old saves showed all text; migrate without replaying the entrance."""
         self.elapsed_ms = self.duration_ms
         self.revealed, self.complete = self.text_length, True
+        self.continue_ms = CONTINUE_MS
         if self.relationship:
             self.relationship.settle()
 
@@ -175,6 +195,8 @@ class DialogueAnimation:
         callbacks = self._callbacks(self.elapsed_ms)
         if (self.wobble_direction not in (-20, 0, 20)
                 or self.text_length < 0 or not 0 <= self.elapsed_ms <= self.duration_ms
+                or not 0 <= self.continue_ms <= CONTINUE_MS
+                or (not self.complete and self.continue_ms)
                 or not 0 <= self.revealed <= self.text_length
                 or self.finish_step not in (0, 1)
                 or (self.finish_step and not self.finish_requested)

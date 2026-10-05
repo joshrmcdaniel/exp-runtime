@@ -642,6 +642,45 @@ transitions are not evidence that every dialogue lifecycle path is equivalent.
 
 ## Implemented text foundation and remaining UI work
 
+### Dialogue Continue tab
+
+Both iOS runtimes contain `GameModel::expandContinue`: SHS **00023020**
+(default-label overload **00022f28**) and CoD **000103cc** / **000107cc**.
+SHS `setBubbleSex` **00023db4** selects common-atlas frames **5 / 3 / 6 / 4**
+for themes **1 / 2 / 3 / other**. These supplied frames are **99×17**, also
+present in the APK common atlas. SHS IPA's UI adapter maps role 126 to 125;
+CoD and APK keep 126. There is no generated replacement artwork.
+
+`expandContinue` positions the tab center at
+`(bubble.width - 49.5, bubble.height + 8.5)`. Its label uses SHS string **29**
+or CoD **26**, centered in the tab. SHS `GameModel::init` **00024e48** binds
+engine font `+0xb23c`; `initFonts` **0003c440** identifies white
+**TrebuchetMS-Bold, 14**. The common renderer uses that role and each game's
+own font resolution. The original CoD screenshots corroborate the tab beneath
+the right edge of the box.
+
+SHS call sites **0007dc60 / 0007dcdc** schedule its appearance from the text
+layer's `m_endTypingTime`. `expandContinue` uses a **0.25 second** vertical
+scale from nearly zero to one; it keeps its horizontal size. The shared
+implementation starts this expansion at the existing typing-completion gate,
+including early reveal and page turns. Save version 17 retains its visual
+clock without changing the VM or tap-to-reveal/advance rules. Read-only native
+memory and LLVM assembly supplement Ghidra's truncated Objective-C calls.
+
+The separate bottom instruction uses SHS string 36 / CoD string 33, semantic
+role 36, in footer layout 18's rectangle `(63,459,252,18)`: local Y 28 plus
+footer origin 431. It uses centered ArialMT 11, white at alpha 176, above the
+common footer art. It does not replace the animated Continue tab or change
+its input gate.
+
+Shared text rasterization uses translation-invariant half-up rounding for
+glyph positions. Python's half-to-even `round` could move two glyphs with
+different integer bearings in opposite directions at a half-pixel origin,
+raising individual letters such as Continue's “i”. Layout metrics, advances,
+pagination and saved font history are unchanged.
+
+### Other shared presentation
+
 Service 8's episode introductions and week cards now use the original PNG
 font pairs 528/529 and 530/531, layout 48, full-screen background, shared footer
 and native entrance/input behavior. [TITLE_SCREENS.md](TITLE_SCREENS.md)

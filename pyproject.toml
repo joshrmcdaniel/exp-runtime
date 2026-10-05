@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "exp-runtime"
-version = "0.3.0"
+version = "0.4.0"
 description = "A compatible EXP engine for Surviving High School and Cause of Death using player-supplied game files"
 readme = "README.md"
 license = {file = "LICENSE"}

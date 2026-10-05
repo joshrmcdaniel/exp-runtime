@@ -53,6 +53,59 @@ def play_phase(session):
 
 
 class GridTests(unittest.TestCase):
+    def test_success_breaks_tiles_with_native_random_draws_and_resumes_in_flight(self):
+        r = resources(tutorial=True)
+        s = Session(r); s.engine.random = NativeRandom(1); s.advance(); play_phase(s)
+        held = s.vm.snapshot()
+        expected_random = copy.deepcopy(s.engine.random)
+        for _ in range(3 * 8 * 12):
+            expected_random.next()
+        for phase, cell in (('down', 0), ('move', 1), ('move', 2)):
+            s.grid_pointer(phase, cell)
+        g = s.engine.word_grid
+        self.assertEqual([len(burst) for burst in g.explosions], [8, 8, 8])
+        self.assertEqual(g.pop_ms, {0: 601, 1: 601, 2: 601})
+        self.assertEqual(s.engine.random.state, expected_random.state)
+        self.assertEqual(s.vm.snapshot(), held)
+        fragment = copy.deepcopy(g.explosions[0][0])
+        s.tick(100)
+        moved = g.explosions[0][0]
+        self.assertAlmostEqual(moved.x, fragment.x + fragment.vx / 10)
+        self.assertAlmostEqual(moved.y, fragment.y + fragment.vy / 10)
+        self.assertAlmostEqual(moved.vy, fragment.vy + 160)
+        self.assertEqual(g.pop_ms, {0: 501, 1: 501, 2: 501})
+        saved = json.loads(json.dumps(s.snapshot()))
+        restored = Session.from_snapshot(r, saved)
+        for _ in range(30):
+            s.tick(50); restored.tick(50)
+            self.assertEqual(s.snapshot(), restored.snapshot())
+        self.assertFalse(g.explosions)
+        self.assertFalse(g.pop_ms)
+        self.assertEqual(s.engine.random.state, expected_random.state)
+        for field, value in (('x', float('nan')), ('scale', -1), ('age_ms', -1)):
+            bad = copy.deepcopy(saved)
+            bad['engine']['word_grid']['explosions'][0][0][field] = value
+            with self.subTest(field=field), self.assertRaises(SaveError):
+                Session.from_snapshot(r, bad)
+
+    def test_version_17_grid_keeps_gameplay_and_migrates_only_new_visuals(self):
+        r = resources(tutorial=True); s = Session(r); s.advance(); play_phase(s)
+        s.grid_pointer('down', 0)
+        old = json.loads(json.dumps(s.snapshot())); old['version'] = 17
+        for key in ('pop_ms', 'explosions', 'glint_ms'):
+            del old['engine']['word_grid'][key]
+        before = copy.deepcopy(old)
+        restored = Session.from_snapshot(r, old)
+        self.assertEqual(old, before)
+        self.assertEqual(restored.vm.snapshot(), s.vm.snapshot())
+        self.assertEqual(restored.engine.random, s.engine.random)
+        self.assertEqual(restored.engine.word_grid.selection, [0])
+        current = restored.snapshot()
+        self.assertEqual(current['version'], 18)
+        for key, value in (('pop_ms', {}), ('explosions', []), ('glint_ms', 100_000_000)):
+            self.assertEqual(current['engine']['word_grid'].pop(key), value)
+        self.assertEqual(current['engine']['word_grid'], old['engine']['word_grid'])
+
     def test_native_grid_words_trim_controls_and_drop_empty_fields(self):
         for text, expected in [(' cat ||\x1f| cat | ', ['cat', 'cat']),
                                ('cat|x', ['cat']), ('cat|x ', ['cat', 'x']), ('x', ['x'])]:

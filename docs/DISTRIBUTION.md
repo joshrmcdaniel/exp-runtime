@@ -41,6 +41,11 @@ The release body comes from [RELEASE.md](../RELEASE.md) at the repository root.
 Update it before tagging a version. [CHANGELOG.md](../CHANGELOG.md) records
 release history, with upcoming changes under **Unreleased**.
 
+The current release notes target **v0.4.0 (unreleased)** and contain changes
+after the v0.3.0 tag. The iOS app/unsigned IPA artifacts, ZIP/RAR episode
+imports and subsequent shared UI/hint improvements belong to v0.4.0.
+Earlier SHS/CoD IPA asset import remains in its original release history.
+
 Rerunning a version-tag workflow updates matching assets on an existing
 release using `gh release upload --clobber`, then publishes any draft left by
 an interrupted upload. If GitHub release immutability is enabled, publish a
@@ -64,6 +69,13 @@ Open `dist/desktop/EXP Runtime.app` on macOS. Windows and Linux executables
 are inside `dist/desktop/EXP Runtime/`; keep that complete directory together.
 Build on the target operating system. CI adds startup checks for all four
 download targets; complete gameplay still needs validation on each platform.
+
+Windows/Linux builds also need CMake and a C compiler. `tools/build_rar.py`
+downloads the SHA-256-pinned libarchive 3.8.9 source and builds the decoder,
+without external codec dependencies or CLI tools. CI runs this before tests;
+the desktop builder includes its library and license notices. Source users
+can run the same helper, or use a system libarchive on Linux. macOS and iOS
+use their OS library, so Apple builds need no additional dependency download.
 
 The build bundles Python and the runtime dependencies. No APK, IPA, EXPs, Ghidra,
 Ren'Py SDK, extracted resources or old checkout are required to build it.
@@ -98,8 +110,8 @@ and skip when those inputs are absent; ordinary tests use synthetic fixtures.
 - `MANIFEST.in` explicitly selects authored source, tests, tools, docs and the
   kiwi SVG logo for source packages. Setuptools limits Python packages to
   `src/exp_runtime` and explicitly includes only `assets/kiwi.svg` as package data.
-- `tools/build_desktop.py` bundles the runtime and its dependencies. `LICENSE`
-  and the authored kiwi SVG are the only repository files explicitly collected
+- `tools/build_desktop.py` bundles the runtime and its dependencies. Licenses,
+  runtime metadata and the authored kiwi SVG are explicitly collected
   as executable data. The build renders the SVG into a macOS ICNS or Windows
   ICO using the existing pygame/Pillow dependencies; no game files are needed.
   The SVG also supplies the launcher logo and window icon on all platforms.

@@ -1,0 +1,148 @@
+#import "NativeFonts.h"
+#import <UIKit/UIKit.h>
+#import <CoreText/CoreText.h>
+#import <ImageIO/ImageIO.h>
+
+static CTFontRef makeFont(NSDictionary *request) {
+    CGFloat size = [request[@"size"] doubleValue];
+    NSString *encoded = request[@"data"];
+    if (encoded) {
+        NSData *data = [[NSData alloc] initWithBase64EncodedString:encoded options:0];
+        CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)data);
+        CGFontRef graphics = CGFontCreateWithDataProvider(provider);
+        CGDataProviderRelease(provider);
+        if (!graphics) return NULL;
+        CTFontRef font = CTFontCreateWithGraphicsFont(graphics, size, NULL, NULL);
+        CGFontRelease(graphics);
+        return font;
+    }
+    NSString *face = request[@"face"];
+    if (![face isKindOfClass:NSString.class]) face = nil;
+    face = [face stringByReplacingOccurrencesOfString:@"_" withString:@"-"];
+    if ([face isEqual:@"VerdanaBoldItalic"]) face = @"Verdana-BoldItalic";
+    UIFont *font = face ? [UIFont fontWithName:face size:size] : nil;
+    if (!font) {
+        CTFontRef system = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, size, NULL);
+        CTFontSymbolicTraits traits = 0;
+        if ([face containsString:@"Bold"]) traits |= kCTFontBoldTrait;
+        if ([face containsString:@"Italic"]) traits |= kCTFontItalicTrait;
+        if (traits) {
+            CTFontRef styled = CTFontCreateCopyWithSymbolicTraits(system, size, NULL, traits, traits);
+            if (styled) { CFRelease(system); system = styled; }
+        }
+        return system;
+    }
+    return CTFontCreateWithName((__bridge CFStringRef)font.fontName, size, NULL);
+}
+
+static CGContextRef bitmap(size_t width, size_t height) {
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, width * 4, space,
+                                                kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    return context;
+}
+
+static NSString *png(CGContextRef context) {
+    CGImageRef image = CGBitmapContextCreateImage(context);
+    NSMutableData *data = [NSMutableData data];
+    CGImageDestinationRef destination = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)data,
+                                                                        CFSTR("public.png"), 1, NULL);
+    CGImageDestinationAddImage(destination, image, NULL);
+    BOOL success = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+    CGImageRelease(image);
+    return success ? [data base64EncodedStringWithOptions:0] : nil;
+}
+
+static CGColorRef color(NSArray *values) {
+    if (values.count != 4) values = @[@255, @255, @255, @255];
+    CGFloat components[4];
+    for (int i = 0; i < 4; ++i) components[i] = [values[i] doubleValue] / 255.;
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGColorRef result = CGColorCreate(space, components);
+    CGColorSpaceRelease(space);
+    return result;
+}
+
+NSString *EXPFontRequest(NSString *json, NSError **error) {
+    NSDictionary *request = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding]
+                                                           options:0 error:error];
+    if (!request) return nil;
+    CTFontRef font = makeFont(request);
+    if (!font) {
+        if (error) *error = [NSError errorWithDomain:@"org.expruntime.font" code:1
+                                          userInfo:@{NSLocalizedDescriptionKey: @"Cannot decode supplied font"}];
+        return nil;
+    }
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    CGColorRef foreground = color(request[@"color"]);
+    if ([request[@"operation"] isEqual:@"atlas"]) {
+        int size = [request[@"size"] intValue], stroke = [request[@"stroke"] intValue];
+        int cell = (size + stroke * 2) * 3, edge = cell * 16;
+        CGContextRef context = bitmap(edge, edge);
+        NSMutableArray *glyphs = [NSMutableArray array];
+        for (UniChar code = 32; code < 256; ++code) {
+            if (code >= 127 && code < 160) continue;
+            CGGlyph glyph;
+            CTFontGetGlyphsForCharacters(font, &code, &glyph, 1);
+            CGRect bounds;
+            CGSize advance;
+            CTFontGetBoundingRectsForGlyphs(font, kCTFontOrientationHorizontal, &glyph, &bounds, 1);
+            CTFontGetAdvancesForGlyphs(font, kCTFontOrientationHorizontal, &glyph, &advance, 1);
+            int left = 0, top = 0, width = 0, height = 0;
+            if (!CGRectIsEmpty(bounds)) {
+                left = floor(CGRectGetMinX(bounds)) - stroke;
+                top = -ceil(CGRectGetMaxY(bounds)) - stroke;
+                width = ceil(CGRectGetMaxX(bounds)) + stroke - left;
+                height = -floor(CGRectGetMinY(bounds)) + stroke - top;
+            }
+            if (width > cell || height > cell) {
+                CGColorRelease(foreground); CFRelease(font); CGContextRelease(context);
+                if (error) *error = [NSError errorWithDomain:@"org.expruntime.font" code:2
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"Font glyph exceeds atlas cell"}];
+                return nil;
+            }
+            int x = code % 16 * cell, y = code / 16 * cell;
+            CGPoint origin = CGPointMake(x - left, edge - y + top);
+            if (stroke) {
+                CGContextSetRGBStrokeColor(context, 1, 1, 1, 1);
+                CGContextSetLineWidth(context, stroke * 2);
+                CGContextSetLineJoin(context, kCGLineJoinRound);
+                CGContextSetTextDrawingMode(context, kCGTextStroke);
+                CTFontDrawGlyphs(font, &glyph, &origin, 1, context);
+            }
+            CGContextSetFillColorWithColor(context, foreground);
+            CGContextSetTextDrawingMode(context, kCGTextFill);
+            CTFontDrawGlyphs(font, &glyph, &origin, 1, context);
+            [glyphs addObject:@[@(code), @(x), @(y), @(width), @(height), @(left), @(size + top), @(advance.width)]];
+        }
+        result[@"glyphs"] = glyphs;
+        result[@"cap"] = @(CTFontGetCapHeight(font));
+        result[@"descent"] = @(CTFontGetDescent(font));
+        result[@"png"] = png(context);
+        CGContextRelease(context);
+    } else {
+        NSAttributedString *text = [[NSAttributedString alloc] initWithString:request[@"text"] ?: @""
+            attributes:@{(__bridge NSString *)kCTFontAttributeName: (__bridge id)font,
+                         (__bridge NSString *)kCTForegroundColorAttributeName: (__bridge id)foreground}];
+        CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+        CGFloat ascent = CTFontGetAscent(font), descent = CTFontGetDescent(font);
+        CGFloat width = CTLineGetTypographicBounds(line, NULL, NULL, NULL);
+        result[@"width"] = @(ceil(width));
+        result[@"height"] = @(ceil(ascent + descent + CTFontGetLeading(font)));
+        if (![request[@"measure"] boolValue]) {
+            int w = MAX(1, [result[@"width"] intValue]), h = MAX(1, [result[@"height"] intValue]);
+            CGContextRef context = bitmap(w, h);
+            CGContextSetTextPosition(context, 0, h - ceil(ascent));
+            CTLineDraw(line, context);
+            result[@"png"] = png(context);
+            CGContextRelease(context);
+        }
+        CFRelease(line);
+    }
+    CGColorRelease(foreground);
+    CFRelease(font);
+    NSData *data = [NSJSONSerialization dataWithJSONObject:result options:0 error:error];
+    return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+}

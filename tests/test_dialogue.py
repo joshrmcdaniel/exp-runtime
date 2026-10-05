@@ -12,6 +12,52 @@ from test_vm import program
 
 
 class DialogueTests(unittest.TestCase):
+    def test_continue_expands_after_reveal_and_survives_save_and_page_turn(self):
+        for finish in (False, True):
+            with self.subTest(finish=finish):
+                session = self.session()
+                motion = session.engine.dialogue_animation
+                if finish:
+                    session.answer()
+                self.assertEqual(motion.continue_scale, 0)
+                while not motion.complete:
+                    session.tick(1)
+                self.assertEqual(motion.continue_scale, 0)
+                finished = motion.elapsed_ms
+                vm = session.vm.snapshot()
+                session.tick(125)
+                self.assertEqual(motion.continue_scale, .5)
+                restored = Session.from_snapshot(session.resources, session.snapshot())
+                self.assertEqual(restored.engine.dialogue_animation.continue_scale, .5)
+                restored.tick(125)
+                self.assertEqual(restored.engine.dialogue_animation.continue_scale, 1)
+                self.assertEqual(restored.vm.snapshot(), vm)
+                # A large scheduler step reaches the same presentation state.
+                other = self.session()
+                if finish:
+                    other.answer()
+                other.tick(finished + 125)
+                self.assertEqual(other.engine.dialogue_animation.continue_scale, .5)
+                motion.next_page(10)
+                self.assertEqual(motion.continue_scale, 0)
+
+    def test_older_continue_state_migrates_without_replaying_story(self):
+        session = self.session()
+        session.tick(5000)
+        old = session.snapshot()
+        old['version'] = 16
+        del old['engine']['dialogue_animation']['continue_ms']
+        original = copy.deepcopy(old)
+        restored = Session.from_snapshot(session.resources, old)
+        self.assertEqual(old, original)
+        self.assertEqual(restored.vm.snapshot(), session.vm.snapshot())
+        self.assertEqual(restored.engine.dialogue_animation.continue_scale, 1)
+        for value in (-1, 251, True):
+            bad = restored.snapshot()
+            bad['engine']['dialogue_animation']['continue_ms'] = value
+            with self.assertRaises(SaveError):
+                Session.from_snapshot(session.resources, bad)
+
     def engine(self):
         engine = EngineState()
         engine.ui_defaults = {74: 0, 75: 7}
@@ -197,7 +243,7 @@ class DialogueTests(unittest.TestCase):
         self.assertEqual(restored.vm.snapshot(), original.vm.snapshot())
         self.assertEqual(restored.pending.details['speaker'], '')
         self.assertEqual(restored.pending.details['presentation_mode'], 4)
-        self.assertEqual(restored.snapshot()['version'], 16)
+        self.assertEqual(restored.snapshot()['version'], 18)
         self.assertEqual(restored.answer().name, 'finished')
 
 

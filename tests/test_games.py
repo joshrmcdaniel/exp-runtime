@@ -231,19 +231,32 @@ class GameChooserTests(unittest.TestCase):
         original = app.game
         original.session.engine.numbers[19] = 123
         app.switch_games()
-        self.assertEqual((app.screen, app.library, app.game), ('games', None, None))
-        app.choose_game('cod')
+        self.assertEqual((app.screen, app.library.game_id, app.game), ('main', 'cod', None))
         with self.assertRaisesRegex(ContentError, 'belongs to'):
             app.open_library(self.root / 'shs')
         self.assertEqual(app.library.game_id, 'cod')
         app.start(resume=False)
         self.assertIsNot(app.game, original)
         self.assertNotIn(19, app.game.session.engine.numbers)
-        app.switch_games(); app.choose_game('shs'); app.start()
+        app.switch_games(); app.start()
         self.assertEqual(app.game.session.engine.numbers[19], 123)
         with patch.object(app.state, 'checkpoint', side_effect=OSError('cannot save')):
             with self.assertRaisesRegex(OSError, 'cannot save'): app.switch_games()
         self.assertEqual((app.screen, app.library.game_id), ('game', 'shs'))
+
+    def test_switch_without_other_library_opens_chooser_and_setup_back_stays_there(self):
+        from exp_runtime.application import Application
+        path = self.root / 'shs'
+        import_game(self.shs, [], path)
+        remember_library(path, 'shs')
+        app = Application(audio=False); self.addCleanup(app.close)
+        app.choose_game('shs'); app.start(resume=False)
+        app.switch_games()
+        self.assertEqual((app.screen, app.selected_game, app.library), ('games', None, None))
+        app.choose_game('cod')
+        self.assertEqual(app.screen, 'setup')
+        app.back()
+        self.assertEqual((app.screen, app.selected_game), ('games', None))
 
 
 @unittest.skipUnless(LOCAL_COD_IPA.is_file() and importlib.util.find_spec('pygame'),
@@ -260,6 +273,9 @@ class LocalCoDTests(unittest.TestCase):
             try:
                 for screen in ('main', 'options', 'title_languages', 'library'):
                     app.screen = screen; app.menu_age = 4000; app.render()
+                    if screen == 'main':
+                        self.assertEqual(app.buttons[3][1], ('switch_games',))
+                        self.assertTrue(all(app.renderer.menu_fonts[1].glyph(c) for c in 'SwitchGame'))
                 app.selected = app.library.select('Volume_One.exp')['id']
                 app.start(resume=False)
                 ui, seen, speakers, wrapped = app.game, set(), set(), set()

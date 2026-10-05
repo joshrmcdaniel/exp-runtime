@@ -9,6 +9,8 @@ from .games import GAMES
 
 
 def user_data_directory() -> Path:
+    if sys.platform == 'ios':
+        return Path.home() / 'Documents' / 'EXP Runtime'
     if sys.platform == 'darwin':
         root = Path.home() / 'Library' / 'Application Support'
     elif sys.platform == 'win32':
@@ -32,8 +34,16 @@ def library_locations():
                 entries = data['libraries']
             else:
                 continue
-            locations.update({game: Path(path) for game, path in entries.items()
-                              if game in GAMES and isinstance(path, str) and Path(path).is_absolute()})
+            for game, path in entries.items():
+                if game not in GAMES or not isinstance(path, str):
+                    continue
+                candidate = Path(path)
+                if sys.platform == 'ios':
+                    if candidate.is_absolute() or '..' in candidate.parts:
+                        continue
+                    candidate = root / candidate
+                if candidate.is_absolute():
+                    locations[game] = candidate
         except (OSError, ValueError):
             continue
     return locations
@@ -46,7 +56,7 @@ def default_library(game='shs') -> Path:
     if game in locations:
         return locations[game]
     root = user_data_directory()
-    if game == 'shs':
+    if game == 'shs' and sys.platform != 'ios':
         # Preserve both source-checkout and installed-app libraries in place.
         if not getattr(sys, 'frozen', False) and Path('.shs-library/library.json').is_file():
             return Path('.shs-library').resolve()
@@ -63,6 +73,10 @@ def remember_library(directory, game='shs'):
     locations[game] = Path(directory).resolve()
     root = user_data_directory()
     root.mkdir(parents=True, exist_ok=True)
+    if sys.platform == 'ios':
+        # Documents move with the app container. Store paths relative to the
+        # shared library root, never the current installation's UUID.
+        locations = {key: path.resolve().relative_to(root.resolve()) for key, path in locations.items()}
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=root,

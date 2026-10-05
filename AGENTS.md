@@ -27,7 +27,9 @@ player's local content is absent. Do not add original assets as test fixtures.
   execution, including pending argument frames and callbacks.
 - `engine.py`, `runtime.py`: host services, panel state, clocks, choices,
   mini games and versioned JSON saves.
-- `application.py`, `desktop*.py`: launcher, menu and pygame rendering/input.
+- `application.py`, `desktop*.py`: shared launcher, menu, rendering and input.
+- `graphics.py`, `platforms/`, `ios/`: pygame/native drawing primitives and the
+  Swift iOS host; keep game layout and behavior in the shared Python code.
 - `fonts.py`, `ui_assets.py`, `atlas.py`: native asset and layout contracts.
 
 Follow SCHEMA.md, VM_SPEC.md and docs/ENGINE_ABI.md. Unknown services must

@@ -1,9 +1,10 @@
-"""Pygame atlas drawing for the presentation-independent text layout."""
+"""Shared atlas drawing for the presentation-independent text layout."""
 from collections import OrderedDict
 from functools import lru_cache
 from io import BytesIO
+from math import floor
 
-import pygame
+from . import graphics as pygame
 
 from .fonts import FontError, layout_text, load_font
 
@@ -71,7 +72,7 @@ class BitmapTextRenderer:
         top = min(0, top)
         for placed in layout.glyphs:
             surface.blit(self._glyph_image(name, placed, scale),
-                         (round(x + placed.x * scale), round(y + (placed.y - top) * scale)))
+                         (floor(x + placed.x * scale + .5), floor(y + (placed.y - top) * scale + .5)))
         return y + (max(layout.height, bottom) - top) * scale
 
     def draw_layout(self, surface, name, layout, x, y, *, scale=1, source_end=None):
@@ -80,5 +81,8 @@ class BitmapTextRenderer:
         for placed in layout.glyphs:
             if source_end is not None and placed.index >= source_end:
                 continue
+            # Half-to-even rounding snaps adjacent glyph bearings in opposite
+            # directions at a half-pixel line origin (notably Continue's i).
+            # Use one translation-invariant pixel rule for the whole line.
             surface.blit(self._glyph_image(name, placed, scale),
-                         (round(x + placed.x * scale), round(y + placed.y * scale)))
+                         (floor(x + placed.x * scale + .5), floor(y + placed.y * scale + .5)))

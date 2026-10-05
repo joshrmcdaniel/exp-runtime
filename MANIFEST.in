@@ -20,4 +20,15 @@ include docs/MAIN_MENU.md docs/STORY_SERVICES.md docs/EPISODE_CATALOG.md
 include tools/build_desktop.py tools/audit_format.py tools/audit_vm.py
 include tools/audit_runtime.py tools/audit_ui_assets.py
 include tools/package_desktop.py
+include tools/build_rar.py
 include .github/workflows/desktop-builds.yml
+include .github/workflows/ios-builds.yml
+include docs/IOS_APP.md
+include tools/build_ios.py tools/package_ios.py tools/test_ios.py
+include ios/dependencies.json ios/EXPRuntime.xcodeproj/project.pbxproj
+include ios/Signing.xcconfig ios/Signing.local.xcconfig.example
+include ios/EXPRuntime/EXPRuntimeApp.swift ios/EXPRuntime/PythonBridge.h
+include ios/EXPRuntime/PythonBridge.m ios/EXPRuntime/Info.plist
+include ios/EXPRuntime/NativeCanvas.swift ios/EXPRuntime/NativeFonts.h ios/EXPRuntime/NativeFonts.m
+include ios/probe/exp_ios_probe.py
+include ios/probe/rar_fixture.py

@@ -25,6 +25,14 @@ The [kiwi fruit app logo](../src/exp_runtime/assets/kiwi.svg) was drawn for
 EXP Runtime and is covered by this project's MIT license. It is independent
 of the original games' artwork. Native app icons are generated from this SVG.
 
+RAR import calls [libarchive](https://github.com/libarchive/libarchive), a
+separate BSD-licensed archive decoder. Apple platforms use the OS library.
+Windows/Linux desktop builds use the pinned upstream **3.8.9** release from
+`tools/build_rar.py`; build output includes its COPYING text and individual
+source copyright/license headers. Decoder sources/binaries remain in ignored
+build output and are not copied into the authored source package. Tests
+construct their own stored RAR4/RAR5 bytes; no original game archive is bundled.
+
 ## Evidence notes
 
 Native function addresses in the specifications refer to `libshs09.so` with

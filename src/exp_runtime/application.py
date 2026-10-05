@@ -1,7 +1,7 @@
-"""Desktop application lifecycle: import, menu, episode sessions and shutdown.
+"""Shared application lifecycle: import, menu, episode sessions and shutdown.
 
-The executable starts here with no game data. pygame is confined to the UI;
-imports run on a worker and publish a complete validated library atomically.
+The executable starts here with no game data. A host supplies graphics/input
+primitives; imports run on a worker and publish a validated library atomically.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -12,9 +12,10 @@ from pathlib import Path
 import tempfile
 
 os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
-import pygame
+from . import graphics as pygame
 
 from .app_icon import icon_surface
+from .app_info import PROJECT_URL
 from .content import ContentError, ContentLibrary, import_game, is_bundled
 from .desktop import Desktop, SIZE
 from .desktop_menu import MenuRenderer
@@ -23,6 +24,7 @@ from .games import GAMES
 from .menu import (EPISODE_HEADER_HEIGHT, EPISODE_ROW_HEIGHT, MenuState,
                    default_library, group_episodes, remember_library)
 from .runtime import SaveError, Session
+from .pointer import ButtonPress
 from .vm import VMError
 
 
@@ -30,7 +32,8 @@ ERRORS = (ContentError, SaveError, VMError, OSError, ValueError, pygame.error)
 
 
 class Application:
-    def __init__(self, directory=None, *, audio=True, game_key=None):
+    def __init__(self, directory=None, *, audio=True, game_key=None, file_picker=None,
+                 library_root=None, url_opener=None):
         if game_key is not None and game_key not in GAMES:
             raise ValueError(f'Unknown game: {game_key}')
         pygame.display.init()
@@ -38,9 +41,13 @@ class Application:
         pygame.display.set_icon(icon_surface())
         self.window = pygame.display.set_mode(SIZE, pygame.RESIZABLE)
         pygame.display.set_caption('EXP Runtime')
-        self.remember_location = directory is None
+        self.remember_location = directory is None and library_root is None
+        self.file_picker = file_picker
+        self.url_opener = url_opener
+        self.library_path = (default_library if library_root is None else
+                             lambda key: Path(library_root) / key)
         self.selected_game = game_key
-        self.directory = Path(directory) if directory is not None else default_library(game_key or 'shs')
+        self.directory = Path(directory) if directory is not None else self.library_path(game_key or 'shs')
         self.library = self.state = self.game = None
         self.renderer = MenuRenderer()
         self.screen = 'games' if directory is None and game_key is None else 'setup'
@@ -54,7 +61,7 @@ class Application:
         self.episode_scroll = 0
         self.expanded_groups = set()
         self.focus = None
-        self.pressed = None
+        self.press = ButtonPress()
         self.focus_index = 0
         self.active = True
         self.intro = True
@@ -70,6 +77,9 @@ class Application:
         self.dropped_files = []
         self.dropping = False
         self.audio = False
+        self.menu_music = pygame.create_menu_music()
+        self.menu_music_token = None
+        self.menu_music_loaded = self.menu_music_paused = False
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='exp-content')
         self.job = None
         self.job_kind = None
@@ -91,11 +101,24 @@ class Application:
     def game_title(self):
         return GAMES[self.selected_game].TITLE if self.selected_game else 'EXP Runtime'
 
+    @property
+    def pressed(self):
+        return self.press.pressed
+
+    def cancel_pointer(self):
+        self.press.cancel()
+        if self.game:
+            self.game.cancel_pointer()
+
+    @property
+    def paused_menu(self):
+        return bool(self.game and self.game.menu_open and 'game' in self.history)
+
     def choose_game(self, key):
         if key not in GAMES:
             raise ContentError(f'Unknown game: {key}')
         self.release_library()
-        self.selected_game, self.directory = key, default_library(key)
+        self.selected_game, self.directory = key, self.library_path(key)
         self.renderer = MenuRenderer()
         self.screen, self.history, self.message = 'setup', [], ''
         pygame.display.set_caption(self.game_title)
@@ -107,6 +130,9 @@ class Application:
         if checkpoint and self.game:
             self.state.checkpoint(self.game.session)
         if self.audio:
+            self.menu_music.stop()
+            self.menu_music_token = None
+            self.menu_music_loaded = self.menu_music_paused = False
             pygame.mixer.music.stop()
             pygame.mixer.stop()
         if self.library:
@@ -118,11 +144,20 @@ class Application:
             del self.click_sound
 
     def switch_games(self):
+        other = next((key for key in GAMES if key != self.selected_game
+                      and (self.library_path(key) / 'library.json').is_file()), None)
+        if other is not None:
+            self.choose_game(other)
+            return
+        self.show_game_chooser()
+
+    def show_game_chooser(self):
         self.release_library()
         self.selected_game = None
         self.renderer = MenuRenderer()
         self.screen, self.history, self.message = 'games', [], ''
-        self.focus = self.pressed = None
+        self.focus = None
+        self.cancel_pointer()
         self.transition_from = None
         self.transition_age = 200
         pygame.key.stop_text_input()
@@ -225,7 +260,8 @@ class Application:
         self.screen = screen
         self.scroll = self.episode_scroll if screen == 'episodes' else 0
         self.focus_index = 0
-        self.pressed = self.focus = None
+        self.focus = None
+        self.cancel_pointer()
         pygame.key.stop_text_input()
         self.transition_age = 0
         if screen == 'main':
@@ -241,7 +277,7 @@ class Application:
         elif self.library and self.screen != 'main':
             self.show('main', remember=False)
         elif self.screen == 'setup':
-            self.switch_games()
+            self.show_game_chooser()
 
     def _attempt(self, operation):
         try:
@@ -260,6 +296,31 @@ class Application:
             except (ContentError, pygame.error) as error:
                 logging.debug('Menu sound unavailable: %s', error)
 
+    def _sync_menu_music(self):
+        if not self.audio:
+            return
+        enabled = bool(self.library and self.state.music and self.screen != 'game' and not self.paused_menu)
+        token = (id(self.library), enabled)
+        if token != self.menu_music_token:
+            self.menu_music_token = token
+            self.menu_music_loaded = self.menu_music_paused = False
+            self.menu_music.stop()
+            if enabled:
+                try:
+                    resource = GAMES[self.selected_game].MENU_MUSIC
+                    self.menu_music.load(BytesIO(self.library.read_asset(resource)))
+                    self.menu_music.play()
+                    self.menu_music_loaded = True
+                except (ContentError, pygame.error, ValueError) as error:
+                    logging.warning('Menu music cannot be played: %s', error)
+        paused = not self.active
+        if self.menu_music_loaded and paused != self.menu_music_paused:
+            self.menu_music_paused = paused
+            if paused:
+                self.menu_music.pause()
+            else:
+                self.menu_music.unpause()
+
     def start(self, *, resume=True, load_path=None):
         episode = self.selected
         if self.game and resume and not load_path and self.game.session.resources.record['id'] == episode:
@@ -274,10 +335,11 @@ class Application:
             # A fresh renderer per episode prevents local image IDs from
             # accidentally reusing the previous episode's cached artwork.
             self.game = Desktop(session, audio=self.audio, window=self.window, on_main_menu=self.return_to_menu,
-                                episode_title=self.state.title(session.resources.record))
+                                episode_title=self.state.title(session.resources.record), on_menu_page=self.show)
         self.game.episode_title = self.state.title(self.game.session.resources.record)
         pygame.display.set_caption(self.game_title + ' — ' + self.game.episode_title)
         self.game.music_enabled, self.game.sound_enabled = self.state.music, self.state.sound
+        self.game.choice_hints = self.state.choice_hints
         self.game.active = self.active
         self.screen, self.history, self.focus = 'game', [], None
         self.game.screen_token = None
@@ -285,6 +347,7 @@ class Application:
         if self.game.session.episode_exited:
             self.return_to_menu()
             return
+        self._sync_menu_music()
         self.game._sync_music()
         self.refresh_saves()
 
@@ -314,6 +377,10 @@ class Application:
         pygame.display.set_caption(self.game_title)
 
     def browse(self, kind):
+        if self.file_picker is not None:
+            pygame.key.stop_text_input()
+            self.file_picker(kind)
+            return
         self.browser_kind = kind
         self.show('browser')
         self.read_folder(self.folder)
@@ -321,7 +388,7 @@ class Application:
     def read_folder(self, folder):
         folder = Path(folder).expanduser().resolve()
         extensions = ({'.apk', '.ipa'} if self.browser_kind == 'apk' else {'.apk'}
-                      if self.browser_kind == 'music_apk' else {'.exp'} if self.browser_kind == 'episodes' else set())
+                      if self.browser_kind == 'music_apk' else {'.exp', '.zip', '.rar'} if self.browser_kind == 'episodes' else set())
         catalog_name = GAMES[self.selected_game].CATALOG_FILENAME if self.selected_game else None
         files = [p for p in folder.iterdir() if not p.name.startswith('.')
                  and (p.is_dir() or p.suffix.lower() in extensions
@@ -360,7 +427,8 @@ class Application:
         else:
             self.job_kind = 'episodes'
             self.job = self.executor.submit(self.library.add_episodes, paths)
-        self.focus, self.pressed = None, None
+        self.focus = None
+        self.cancel_pointer()
         pygame.key.stop_text_input()
 
     def flush_drops(self):
@@ -370,7 +438,7 @@ class Application:
 
     def command(self, command):
         kind = command[0]
-        self.pressed = None
+        self.cancel_pointer()
         if self.busy:
             return
         if kind == 'dismiss':
@@ -392,7 +460,7 @@ class Application:
             elif kind == 'episode':
                 self.selected = command[1]
                 self.show('episode')
-            elif kind in ('options', 'help', 'library', 'restart', 'title_languages'):
+            elif kind in ('options', 'help', 'library', 'restart', 'title_languages', 'cheats'):
                 self.show(kind)
             elif kind == 'title_language':
                 language = command[1]
@@ -408,12 +476,35 @@ class Application:
                 self.episode_scroll = self.scroll = 0
             elif kind == 'start':
                 self.start(resume=command[1])
-            elif kind == 'legacy':
-                self.message = 'The original EA store is not part of this player. Add your own episode files through Options.'
+            elif kind == 'project':
+                if self.url_opener is not None:
+                    self.url_opener(PROJECT_URL)
+                else:
+                    import webbrowser
+                    if not webbrowser.open(PROJECT_URL):
+                        self.message = f'Open the project at {PROJECT_URL}'
             elif kind == 'toggle':
                 key = command[1]
-                setattr(self.state, key, not getattr(self.state, key))
-                self.state.persist()
+                if key not in ('music', 'sound', 'choice_hints'):
+                    raise ValueError('Unknown preference')
+                previous = getattr(self.state, key)
+                setattr(self.state, key, not previous)
+                try:
+                    self.state.persist()
+                except OSError:
+                    setattr(self.state, key, previous)
+                    raise
+                if self.game:
+                    self.game.music_enabled, self.game.sound_enabled = self.state.music, self.state.sound
+                    self.game.choice_hints = self.state.choice_hints
+                    self.game._sync_music()
+            elif kind in ('save', 'load') and self.paused_menu:
+                self.game.command((kind,))
+                if kind == 'load' and not self.game.menu_open:
+                    self.screen, self.history = 'game', []
+                    self.game._sync_music()
+                else:
+                    self.message = self.game.message
             elif kind == 'order':
                 self.state.order = 'title' if self.state.order == 'episode' else 'episode'
                 self.state.persist()
@@ -490,6 +581,7 @@ class Application:
             self.transition_age = min(200, self.transition_age + elapsed)
 
     def render(self):
+        self._sync_menu_music()
         if self.screen == 'game':
             if self.game.session.episode_exited:
                 self.return_to_menu()
@@ -515,6 +607,7 @@ class Application:
         pygame.display.flip()
 
     def _scroll(self, delta):
+        self.press.cancel()
         total, height = (len(self.files) * 35, 210) if self.screen == 'browser' else (self.episode_rows()[1], 252)
         self.scroll = max(0, min(max(0, total - height), self.scroll + delta))
 
@@ -523,7 +616,8 @@ class Application:
             return False
         if event.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWFOCUSGAINED):
             self.active = event.type == pygame.WINDOWFOCUSGAINED
-            self.pressed = None
+            self.cancel_pointer()
+            self._sync_menu_music()
         if self.screen == 'game':
             return self.game.handle_event(event)
         if event.type == pygame.DROPBEGIN:
@@ -541,9 +635,9 @@ class Application:
             return True
         if self.message:
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                self.message = ''
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                self.message = ''
+                self.command(('dismiss',))
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                self._pointer_event(event)
             return True
         if not self.ready:
             return True
@@ -577,19 +671,23 @@ class Application:
             elif event.key in (pygame.K_PAGEUP, pygame.K_PAGEDOWN) and self.screen in ('browser', 'episodes'):
                 self._scroll(-210 if event.key == pygame.K_PAGEUP else 210)
         elif event.type == pygame.MOUSEWHEEL and self.screen in ('browser', 'episodes'):
-            self.pressed = None
             self._scroll(-event.y * 35)
-        elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP) and event.button == 1:
-            point = ((event.pos[0] - self.viewport.x) * 320 / self.viewport.width,
-                     (event.pos[1] - self.viewport.y) * 480 / self.viewport.height)
-            hit = next((command for rect, command in self.buttons if rect.collidepoint(point)), None)
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                self.pressed = hit
-            else:
-                pressed, self.pressed = self.pressed, None
-                if hit is not None and hit == pressed:
-                    self.command(hit)
+        elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+            self._pointer_event(event)
         return True
+
+    def _pointer_event(self, event):
+        if event.type != pygame.MOUSEMOTION and event.button != 1:
+            return
+        point = ((event.pos[0] - self.viewport.x) * 320 / self.viewport.width,
+                 (event.pos[1] - self.viewport.y) * 480 / self.viewport.height)
+        hit = (next((command for rect, command in self.buttons if rect.collidepoint(point)), None)
+               if self.viewport.collidepoint(event.pos) else None)
+        phase = {pygame.MOUSEBUTTONDOWN: 'down', pygame.MOUSEBUTTONUP: 'up',
+                 pygame.MOUSEMOTION: 'move'}[event.type]
+        command = self.press.update(phase, hit, (self.screen, self.message))
+        if command is not None:
+            self.command(command)
 
     def close(self):
         # Worker must finish its atomic publication before its ZIP is closed.
@@ -632,6 +730,11 @@ def main(argv=None):
     parser.add_argument('--smoke-test', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.smoke_test:
+        from .app_info import runtime_version
+        from .rar import library
+        library()  # Frozen downloads must include a usable RAR4/RAR5 decoder.
+        if runtime_version() == 'development':
+            raise RuntimeError('Packaged runtime version is missing')
         # A packaged-build check must never open or alter the player's library.
         with tempfile.TemporaryDirectory(prefix='exp-setup-test-') as temporary:
             app = Application(audio=False)
@@ -644,6 +747,8 @@ def main(argv=None):
                 for key in GAMES:
                     app.selected_game, app.screen = key, 'setup'
                     app.render()
+                app.screen = 'help'
+                app.render()
             finally:
                 app.close()
         return

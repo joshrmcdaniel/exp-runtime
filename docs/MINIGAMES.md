@@ -445,6 +445,11 @@ localized message IDs/values and outgoing play effects. Older football saves
 retain their recorded feedback and game state; absent camera history starts at
 the saved field position. See [FOOTBALL_UI.md](FOOTBALL_UI.md#saved-presentation-and-verification).
 
+Version **18** preserves grid tile pop/glint clocks and fragment bursts. Eight
+fragments per selected tile consume twelve native engine RNG draws each, up to
+twenty active bursts. Rendering does not draw randomness. Older saves retain
+their existing gameplay/RNG state and start the missing effects inactive.
+
 Service 88 queues a substituted notification for the next dialogue, with the
 original Pajama Hip S font, rising letters and length-dependent fade
 (`0009c814/0009c750`). This shared path handles post-game notifications and stat
@@ -462,8 +467,8 @@ native-derived rule checks; no running-original frame trace has been compared.
 
 Remaining differences include football touchdown particles and their random
 draws, flying internal score deltas, parts of sound staging and the final exit
-overlay (see [FOOTBALL_UI.md](FOOTBALL_UI.md)); grid tile side
-faces, specular highlights, particle effects, ring pulses, flying score deltas,
+overlay (see [FOOTBALL_UI.md](FOOTBALL_UI.md)); grid ring pulses, flying score deltas,
+selection opacity, native GL depth-buffer rasterization,
 board-load timing during outgoing animation and some overlay boundaries. The grid currently builds
 the incoming board when phase 4 begins, whereas native may defer it until the
 outgoing animation completes. Integer clocks may differ at floating-point

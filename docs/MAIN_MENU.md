@@ -29,19 +29,27 @@ yield IDs and must never be fed into the engine-service dispatcher.
 | 10002 | Play/Resume | 125; 126 if a save exists | All installed episodes, with saved-progress indicators |
 | 10004 | NowAiring | 127 | Locally imported episode list |
 | 10003 | OnDemand | 91 | All local episodes |
-| 10005 | MoreGames | 252 or 253, depending on ad state | Explain local-content workflow; no store request |
+| 10005 | MoreGames | 252 or 253, depending on ad state | Switch Game; checkpoint progress and open the other installed game, or the chooser if absent |
 | 1006 | Options | Gear artwork | Music/Sound, episode title language and library controls |
-| 10007 | Help/About | Info artwork | Player controls and reconstruction status |
+| 10007 | Help/About | Info artwork | Player controls, runtime version and GitHub project link |
 | 10008 | DisableAds | 300 | Omitted; no advertising or purchase system |
 
 `0008cfe4` checks native save availability; `0008ce68` distinguishes the New
 Girl save from the current expansion save. Native save formats are not read by
 the compatible runtime. The native analytics names and visible English labels
 differ: string 127 is "Weekly Free Episode", and 91 is "More Episodes".
-Labels are loaded from the player's APK, not embedded as copied game data.
+Native labels are loaded from the player's APK, not embedded as copied game
+data. The fourth button is the authored **Switch Game** action; it retains
+the original 533 glyph font, artwork, placement and entrance/pressed states.
+Help/About displays the installed EXP Runtime version, independently of the
+imported game's version. Its GitHub button opens the configured public project
+URL in the system browser only when selected, on desktop and iOS.
 
 Native button handling rejects input during a transition and unless the
 application is in the main-menu state. Selection feedback uses sound 8010.
+CoD uses its own verified sound 8005; see [COD.md](COD.md). The shared menu
+reads the click from the selected game's base bank and respects Sound separately
+from Music. It never substitutes the other game's identically numbered asset.
 Native network listings refer to server-provided episode/ad configuration.
 The desktop lists the user's own EXP files instead; it neither contacts those
 servers nor pretends that a local episode is the latest weekly release.
@@ -259,7 +267,18 @@ Music/Sound preferences gate playback separately from VM-visible audio state.
 Leaving a live episode pauses its music stream; resuming that same session
 continues from its current position. Starting another episode, restarting, or
 loading a saved session instead loads its requested cue. Playback position is
-not saved to disk, and no native menu music loop has been verified.
+not saved to disk.
+
+The shared menu now requests the selected game's original theme: **8215**
+for SHS and **8209** for CoD. Ghidra identifies these in iOS
+`splashScreenFlewIn:` (SHS `0002adb0`, CoD `00014c0c`) and
+`doSoundManagerTransition` (SHS `0003b44c`, CoD `00022b04`). Both supplied
+IPAs contain their menu track. Playback uses a separate SDL channel on desktop
+and a separate AVAudioPlayer on iOS, retaining the live story stream and
+playhead while navigating the main menu. Music mute and focus/background
+holds apply to the menu too. Switching games releases the old theme.
+Native looping/fades and exact splash-to-theme scheduling remain unverified;
+the theme currently plays once on entering the menu.
 
 ## 5. Executable and content boundary
 
@@ -288,9 +307,104 @@ default. Imported episodes appear in Play/Resume even before they have saves.
 **Options → Switch Game** checkpoints a live session before closing its library,
 stops audio and discards per-game rendering caches. If the checkpoint fails,
 the session stays open. The other game loads its own preferences and saves.
+When the other game has no imported library, switching opens the chooser.
+Setup's Back action always returns to the chooser.
 Setup rejects packages/libraries belonging to the other selected game.
 EXPs themselves have no reliable game marker and must be added to the correct
 selected library. SHS APK supplementation is unavailable for CoD libraries.
+
+### Pause menu and choice hints
+
+Read-only native verification of SHS iOS `invokePauseMenu` **0003b53c** and
+CoD **00024888**, plus their supplied layout banks, confirms four ordinary
+rows: Resume, Options, Help & About, Main Menu. The shared renderer uses pack
+16, header layout 33, alternating row colors and footer layout 36
+(frames 74/79, without the list's navigation icons). Width is 302 at X 9;
+height is `56 + 4*44 + 43`, vertically centered. SHS `generateNewMenu`
+**000a2f80**, `solveMetrics` **000a3dc0** (assembly), iOS table row height
+**0005ceb0**, and `initFonts` **0003c440** provide geometry and the rounded
+28/14-point title/body fonts. Standalone desktop sessions retain their Save/Load shortcuts;
+the application exposes manual slots in paused Options and via F5/F9.
+Options/Help/Cheats retain the paused story, timers, RNG and audio state.
+
+SHS `initPermanents` at **0003e8d8–0003ea28** assigns common atlas frame 49
+to the gear's normal state and frame 50 to highlighted/selected states, with
+touch-up-inside dispatch. The alternate frame supplies the orange glow.
+The shared gear now tracks down/move/up across dialogue, choices, pickers,
+title/message panels and minigames. Moving outside removes the highlight;
+moving back restores it, while releasing outside or losing the panel cancels.
+
+The supplied menu banks select entry transition **20** for Pause (SHS menu
+22, CoD menu 21). `notifyNewMenu` **00045318 / 00020a0c**, including SHS
+assembly **00045620–00045720**, scales the menu from **0.001** to **1** about
+its center over **400 ms**, with UIKit ease-in/out (curve 0). The frontend
+uses that curve and duration, with story clocks frozen and pointer input gated
+until entry finishes. Dimming opacity and exit/subpage transitions retain their
+previous behavior; those details are not claimed as native-equivalent.
+
+SHS `buttonPressed` **00050fe8** (pause branch **00051188**) plays resource
+**8011**; CoD **000249d0** (branch **00024d86**) plays **8006**. Pause row
+dispatch in `SHSWidgetMenu::buttonPressed` **000a5c64 / 0003fd60** plays
+**8010 / 8005** after the selected action. Both sounds use the game's base
+bank and Sound preference independently of Music. They do not dispatch a
+story sound service or alter the saved VM/audio state. Objective-C decompilation
+stops prematurely at some UIKit calls; these paths were followed in assembly
+and checked against Ghidra memory without changing its analysis.
+
+Rows fill only the 296-pixel interior; the three-pixel sides come from frame
+74. Stretching the row art across all 302 pixels covered those borders.
+`SHSMenuCell::setSelected:animated:` **0005d018**, palette setup **000a2f80**,
+and `tableView:didSelectRowAtIndexPath:` **0005bc24** confirm held selection
+followed by release dispatch. Normal alternating RGBA colors are
+`(239,239,249,239)` and `(255,242,255,239)`; selected is `(170,225,249,243)`.
+Shared menu buttons use their supplied pressed artwork. Dragging off, scrolling,
+losing focus, replacing a panel or redealing a timed quiz cancels the old press.
+
+**Options → Cheats → Choice hints**, added in v0.4.0 (unreleased), is an
+authored, opt-in per-game preference, off by default. Green marks recognized
+gains/correct answers, red recognized losses/wrong answers or a
+no-gain alternative when another option has a known gain, amber mixed effects.
+Unresolved choices retain their original styling. It applies to ordinary
+choices, including their actual randomized/custom return values. Service 71
+word quizzes use the current deal's explicit good/bad weights, including bad
+answers at score zero and duplicate words with different weights.
+
+The preview executes isolated copies of the current session, bounded to
+6,000 VM steps/48 panels per path, 16 options per decision, four decisions
+including the current one, and 192 branch copies across the whole preview.
+It observes relationship property 407, actually dispatched service-88
+“Score Up!”/“Detective Score Up!” notices and SHS's explicit service-79 answer
+feedback sounds (8007 correct / 8003 wrong). It does not infer score from
+arbitrary counters or words in dialogue. When feedback is deferred, it compares
+every matching sequence of later answers across the initial options. Later
+questions must match by scene, instruction and enabled return values. An
+option is marked better only when it is never worse on those continuations
+and strictly improves at least one; equal outcomes and conflicting tradeoffs
+remain unmarked. This handles multi-question thresholds such as Football
+Star's Beth conversation without any episode, character or counter overrides.
+Immediate recognized feedback retains the existing gain/loss/mixed colors.
+Missing resources, unmatched decisions, unknown services and exhausted
+budgets stay unknown. Previewing never saves, emits audio/host requests or
+changes live VM state, clocks or random state. The real choice still runs the
+original branch, including the ordinary Score Up animation.
+
+Football Star's classroom questions use ordinary **service 1**, not the
+service-71 timed-word minigame. Its shared quiz routine (scene25004, PC300)
+shuffles the answer data and branches on the selected answer: correct plays
+8007, displays confirmation and increments a local count; wrong or timeout
+plays 8003. Weekly quizzes and finals call that routine. It never emits a
+Score Up notice for each answer, which is why the original preview missed it.
+The per-game sound bindings now establish feedback for any choice using
+those cues; no scene, question, answer text or grade-counter ID is special-cased.
+CoD has separate assets and does not inherit these SHS bindings. Ghidra's
+Android `000a3bc8` and SHS iOS `playSound` **0004a714** confirm the resource
+handoff; the original EXP establishes the correct/wrong meaning. Authored tests
+cover shuffled values, muted/stale audio independence, mixed feedback, unknown
+services and saves; optional replays check original APK/IPA classroom questions.
+
+The original gray choice skin (property 651 = 3, resource 252) does contain
+red/green button art, but those are native selection colors rather than an
+outcome oracle. No gray-skin override is exposed.
 
 Build on the target operating system:
 

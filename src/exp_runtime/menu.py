@@ -144,6 +144,7 @@ class MenuState:
         self.library = library
         self.path = library.directory / 'player.json'
         self.music = self.sound = True
+        self.choice_hints = False
         self.order = 'episode'
         self.title_language = 'en'
         self.selected = None
@@ -153,6 +154,7 @@ class MenuState:
                 data = json.loads(self.path.read_text(encoding='utf-8'))
                 if (not isinstance(data, dict) or data.get('version') != 1
                         or type(data.get('music')) is not bool or type(data.get('sound')) is not bool
+                        or type(data.get('choice_hints', False)) is not bool
                         or not isinstance(data.get('selected'), (str, type(None)))
                         or data.get('order', 'episode') not in ('episode', 'title')
                         or data.get('title_language', 'en') not in TITLE_LANGUAGES):
@@ -160,6 +162,7 @@ class MenuState:
                 self.music, self.sound, self.selected = data['music'], data['sound'], data['selected']
                 self.order = data.get('order', 'episode')
                 self.title_language = data.get('title_language', 'en')
+                self.choice_hints = data.get('choice_hints', False)
             except (ValueError, OSError) as error:
                 self.warning = f'Could not read preferences: {error}'
         ids = {e['id'] for e in library.episodes}
@@ -203,7 +206,7 @@ class MenuState:
 
     def persist(self):
         data = dict(version=1, selected=self.selected, music=self.music, sound=self.sound,
-                    order=self.order, title_language=self.title_language)
+                    order=self.order, title_language=self.title_language, choice_hints=self.choice_hints)
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.library.directory,

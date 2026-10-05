@@ -1,6 +1,8 @@
 """Service 90's nonblocking scene label (FUN_0007b97c)."""
 from dataclasses import dataclass
 
+from .fonts import TextStyle, layout_text
+
 
 @dataclass
 class SceneBadge:
@@ -40,3 +42,24 @@ class SceneBadge:
         # converting the anchor to screen Y therefore adds half its height.
         x, y, scale = self.text_position
         return x - 55 * scale, 60 - y + 10 * scale, scale
+
+
+def outline_badge_text(text, font, region, color):
+    """CSFont's wrapped, left/center-aligned layout-67 text (flags 0x19).
+
+    Both iOS games use Arial 14, cap-height line boxes and no added gap.
+    Bound substitute-font ink to the same region without changing the label
+    or any saved state. Android's separate bitmap-label rules remain above.
+    """
+    # A substitute font may have a glyph wider than the entire native region.
+    # Let that glyph wrap alone, then fit its ink with the rest of the label.
+    width = max(region.width, max((font.glyph(c).advance
+                for c in text.split('\x00', 1)[0] if c != '\n'), default=0))
+    layout = layout_text(font, text, width, TextStyle(font.cap_height, 0, color))
+    left, top, right, bottom = layout.ink_bounds
+    scale = min(1, region.width / max(1, right - left),
+                region.height / max(1, bottom - top))
+    x, y = region.x, region.y + (region.height - layout.height * scale) / 2
+    x = max(region.x - left * scale, min(x, region.x + region.width - right * scale))
+    y = max(region.y - top * scale, min(y, region.y + region.height - bottom * scale))
+    return layout, (x, y), scale

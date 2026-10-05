@@ -105,7 +105,8 @@ uv run --locked --extra desktop exp-runtime
 game chooser. Choose SHS or Cause of Death, then import its assets or open its
 existing library. Options accepts additional episodes for the selected game;
 drag-and-drop also works. **Options → Switch Game** checkpoints the current
-story and returns to the chooser. No assets or saved progress cross game
+story and opens the other installed game, or the chooser if it is absent.
+No assets or saved progress cross game
 libraries. The `shs` and `shs-tool` commands remain compatibility aliases.
 See [MAIN_MENU.md](MAIN_MENU.md) for launcher migration and native menu evidence.
 
@@ -171,15 +172,45 @@ See [the localization evidence](MAIN_MENU.md#episode-title-languages).
 | Hold and drag across grid cells | Trace a word or picture sequence, including diagonal steps; no repeated cell |
 | Click a football target or press 1–9 | Commit that play; targets change over time |
 | Tap football help / Enter / Space | Continue after its native reading delay |
-| Gear on title, dialogue, choice or mini-game screens | Open Resume/Save/Load/Main Menu; active game time and music pause |
+| Gear on title, dialogue, choice or mini-game screens | Open Resume/Options/Help & About/Main Menu; active game time and music pause |
 | Type, Backspace, Enter | Edit a name (up to 16 ASCII letters/digits, subject to native font width); Enter submits a nonempty name or dismisses its alert |
-| Save button / F5 | Replace the current episode's local save slot |
-| Load button / F9 | Restore that slot |
+| Pause → Options → Save / F5 | Replace the current episode's local save slot |
+| Pause → Options → Load / F9 | Restore that slot |
 | Wheel, arrow keys, Page Up/Down | Scroll long option lists and other non-dialogue screens |
 | Escape | Open/close the pause menu during play; go back within application menus |
 | Main Menu / Close window | Save a separate automatic checkpoint and return to the menu / exit |
 
 ## Content library contract
+
+### Episode archives
+
+Episode selection, folder imports, drag-and-drop and CLI `--episodes` accept
+loose EXPs and ZIP/RAR collections. Subfolders are scanned for EXPs and the
+selected game's catalog. macOS metadata and unrelated files are ignored.
+Imported episodes/catalogs persist independently of the source archive.
+The existing batch validation, content deduplication and save preservation
+apply to every input form; a failed batch does not partially publish episodes.
+
+Archive paths are never used as output paths. Selected members reject parent
+traversal, absolute/drive paths, links, duplicate normalized names, encryption
+and oversized data. Limits are 10,000 entries, 64 MiB per EXP and 2 GiB total
+unpacked data; catalogs retain their own smaller limit. RAR streams stage
+selected members to numbered temporary files, cleaned on success or failure.
+RAR's total includes ignored members because a solid decoder may unpack them.
+
+RAR4/RAR5 decoding uses libarchive via ctypes, without external commands or a
+network request at import time. macOS/iOS use `/usr/lib/libarchive.2.dylib`;
+Windows/Linux downloads bundle the pinned decoder built by `tools/build_rar.py`.
+Source users on Windows can run that helper with CMake and a C compiler;
+Linux can use its system libarchive. Unsupported variants (including RAR4
+solid archives in Apple's decoder), encrypted or incomplete multipart inputs
+report decoder errors; extract those to EXP/ZIP first. Archive checksum
+enforcement follows the platform decoder: Apple's tested system library did
+not reject a stored-member CRC mismatch. Every imported EXP still receives
+the same full structural/script validation as a loose EXP. Do not interpret
+content hashes as proof that a source archive was undamaged.
+
+### Layout
 
 ```text
 library/
@@ -224,8 +255,8 @@ rules are in [EPISODE_CATALOG.md](EPISODE_CATALOG.md).
 
 Import validates a private copy of the APK or IPA, decodes all imported EXP payloads,
 and parses their KiWi programs before publishing the library by directory
-rename. A failed import leaves no partially initialized destination. ZIP paths
-are never extracted. Import checks duplicate ZIP member names. Android import
+rename. A failed import leaves no partially initialized destination. Archive
+paths are never used as output paths. Import checks duplicate member names. Android import
 rejects an unknown native profile; its supported member is `lib/armeabi/libshs09.so`, with
 SHA-256:
 
@@ -314,15 +345,16 @@ while data and PC/SP/FP reset according to the core VM contract.
 <a id="runtime-save-schema-version-13"></a>
 <a id="runtime-save-schema-version-14"></a>
 <a id="runtime-save-schema-version-15"></a>
+<a id="runtime-save-schema-version-17"></a>
 
-## Runtime save schema, version 16
+## Runtime save schema, version 18
 
 This is a new format for the reimplementation. No pickle, object deserialization,
 or original executable code is used. JSON fields are:
 
 | Field | Contract |
 | --- | --- |
-| `format`, `version` | `"exp-runtime-save"`, `16` |
+| `format`, `version` | `"exp-runtime-save"`, `18` |
 | `content` | `profile`, `apk_sha256`, `episode_sha256`; must exactly match loaded content |
 | `scene` | Unsigned current script resource ID |
 | `script_sha256` | Hash of the losslessly encoded current program |
@@ -339,14 +371,29 @@ slot 0; that mutable slot is saved normally. Missing native version metadata
 keeps the query pending. Older CoD stops at services 70, 94, 96 and 100 resume their
 original call and continuation without replaying previous choices or random
 draws. Their outgoing portrait is recovered from the saved panel when needed.
-These handlers do not change the version-16 save schema.
+These handlers were introduced without changing the version-16 save schema.
 
 SHS stops at 14, 15 and 21 also resume their retained calls. Services 14/21
 complete with the verified native zero result. Service 15 presents named
 dialogue and retains its complete frame through paging and acknowledgement;
 save validation honors its optional negative prefix. Loading an older stop
 recovers the outgoing portrait before continuing without replaying earlier
-bytecode or random draws. These additions also keep save version 16.
+bytecode or random draws. These additions originally retained save version 16.
+
+Version 17 adds `dialogue_animation.continue_ms`, the 0–250 ms visual clock
+for the native Continue tab. It stays zero until typing completes, advances
+only with active story time and resets on each page. Versions 1–16 remain
+readable: an already completed page gets a settled tab; an unfinished page
+gets a hidden one. VM state, reading position and input gates are unchanged.
+
+Version 18 adds the grid's selected-tile pop clocks, glint clock and active
+fragment bursts. These preserve in-flight effects without drawing new random
+values on load. Versions 1–17 retain their board, selection, scores, random
+state and VM frame; absent effects start inactive. Native fragment creation
+now consumes its recovered random draws, so future generated boards may differ
+from older runtime builds after a successful word. Historical omitted draws
+are not reconstructed. See [GRID_UI.md](GRID_UI.md#saved-presentation-and-verification).
+Older runtime builds cannot read version-18 saves.
 
 The `vm` object contains `pc`, `sp`, `fp`, `a`, `b`, `result`, `data`, `stack`,
 `pending`, `steps_executed`, `opcode_counts`, and `recent_pcs`.

@@ -12,6 +12,7 @@ UI_IDS = {528: 292, 529: 293, 530: 294, 531: 295, 532: 296, 533: 297}
 # Host string roles use the existing SHS renderer's indices. These are
 # inspected semantic equivalents in CoD's own resource 13, never SHS text.
 STRING_IDS = {
+    9: 8, 10: 9, 11: 10, 21: 20, 23: 22, 128: 120,
     29: 26, 30: 27, 31: 28, 35: 32, 36: 33, 37: 34, 39: 36,
     82: 79, 91: 82, 125: 117, 126: 118, 127: 119, 164: 154,
     238: 213, 252: 227, 258: 232, 260: 234, 302: 80,

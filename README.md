@@ -5,6 +5,9 @@ reproduce the original interface and gameplay. It executes the original KiWi
 scripts and reads graphics, fonts, audio and episode data from files supplied
 by each player.
 
+This checkout documents **v0.4.0 (unreleased)**. See the
+[changelog](CHANGELOG.md) for the features included in earlier releases.
+
 Choose a game in the launcher, then supply its assets: an **SHS Android 1.0.9 APK**,
 **SHS IPA**, or **Cause of Death IPA**, plus any additional **EXP episodes**
 for that game. The importer reads those
@@ -27,6 +30,11 @@ app archive inside it.
 Builds include a SHA-256 checksum. macOS builds use ad-hoc signing and are not
 notarized; Windows builds are unsigned. See [distribution](docs/DISTRIBUTION.md)
 for CI triggers, packaging and the first-launch requirements.
+
+The [iPhone/iPad app](docs/IOS_APP.md) shares the Python engine, menus and
+renderers with desktop, using native iOS drawing, audio and Files access.
+Its **iOS builds** artifact is an unsigned IPA for users to sign and install;
+the Xcode project also supports running directly on your device.
 
 ## Build your own app
 
@@ -62,13 +70,14 @@ uv run --locked --extra desktop exp-runtime
 
 1. Launch the app, select **Surviving High School** or **Cause of Death**, then
    choose that game's APK/IPA or open its existing library.
-2. Add EXP files or an episode folder through Options, or drag them onto the
+2. Add EXP files, ZIP/RAR collections or a folder through Options, or drag them onto the
    menu. SHS's bundled stories, including Football Star, or CoD's Volume One
    are imported automatically.
 3. Select an episode in Play/Resume. Imported episodes and progress persist
    when you close the app.
 
-Use **Options → Switch Game** to return to the chooser. Each game has its own
+Use **Switch Game** to open the other installed game, or the chooser when it
+has not been imported. Each game has its own
 library, preferences and saves. Shared asset IDs never pull artwork from the
 other game. EXP files do not reliably identify their game, so add them to the
 correct selected library.
@@ -83,6 +92,18 @@ for command-line options and supported assets.
 or Spanish names where the EXP includes them. Story text remains in the
 language supplied by each episode; the inspected APK/IPA contain English
 stories, not five dialogue translations. Existing progress stays compatible.
+
+**Options → Cheats → Choice hints** optionally marks recognized near-term
+score/relationship gains or correct quiz answers green, losses/wrong answers
+or no-gain alternatives red, and mixed effects amber. Unknown or later
+consequences stay unmarked. It is off by default.
+
+ZIP and RAR collections can be imported directly, including EXPs in subfolders and
+the selected game's catalog. Imported episodes remain in the app's library;
+the archive is not needed afterward. RAR imports use the OS decoder on Apple
+platforms and a bundled decoder in Windows/Linux downloads. Source users need
+libarchive; see [archive import](docs/RUNTIME.md#episode-archives).
+You can also import an extracted folder:
 
 > Store the episodes within a folder
 >

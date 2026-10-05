@@ -2,7 +2,7 @@
 from dataclasses import replace
 from functools import lru_cache
 
-import pygame
+from . import graphics as pygame
 
 from .content import ContentError
 from .fonts import TextStyle, layout_label

@@ -136,6 +136,22 @@ class LibraryMenuTests(unittest.TestCase):
         with self.assertRaises(ContentError):
             state.save_path('../../outside')
 
+    def test_choice_hint_preferences_default_off_and_survive_reopen(self):
+        state = MenuState(self.library)
+        self.assertFalse(state.choice_hints)
+        state.choice_hints = True
+        state.persist()
+        self.assertTrue(MenuState(self.library).choice_hints)
+        data = json.loads(state.path.read_text())
+        del data['choice_hints']
+        state.path.write_text(json.dumps(data))
+        self.assertFalse(MenuState(self.library).choice_hints)
+        data['choice_hints'] = 'yes'
+        state.path.write_text(json.dumps(data))
+        restored = MenuState(self.library)
+        self.assertFalse(restored.choice_hints)
+        self.assertIn('Invalid player preferences', restored.warning)
+
     def test_title_preferences_keep_existing_saves_and_scripts_compatible(self):
         state = MenuState(self.library)
         session = state.session(state.selected)
@@ -228,6 +244,74 @@ class ApplicationTests(unittest.TestCase):
             app.handle_event(pygame.event.Event(pygame.DROPCOMPLETE))
             importer.assert_called_once_with([Path('/tmp/game.apk'), Path('/tmp/story.exp')])
 
+    def test_menu_buttons_show_hold_and_cancel_on_drag_focus_and_modal(self):
+        import pygame
+        app = self.make_app()
+        app.render()
+        rect = next(r for r, c in app.buttons if c == ('browse', 'apk'))
+        point = tuple(v * 1.5 for v in rect.center)
+        def pointer(kind, position=point):
+            app.handle_event(pygame.event.Event(kind, button=1, pos=position))
+            app.render()
+        normal = pygame.image.tobytes(app.renderer.canvas, 'RGB')
+        pointer(pygame.MOUSEBUTTONDOWN)
+        self.assertEqual(app.screen, 'setup')
+        self.assertEqual(app.pressed, ('browse', 'apk'))
+        self.assertNotEqual(pygame.image.tobytes(app.renderer.canvas, 'RGB'), normal)
+        pointer(pygame.MOUSEMOTION, (-1, -1))
+        self.assertIsNone(app.pressed)
+        self.assertEqual(pygame.image.tobytes(app.renderer.canvas, 'RGB'), normal)
+        pointer(pygame.MOUSEBUTTONUP, (-1, -1))
+        self.assertEqual(app.screen, 'setup')
+        pointer(pygame.MOUSEBUTTONDOWN)
+        app.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+        app.handle_event(pygame.event.Event(pygame.WINDOWFOCUSGAINED))
+        pointer(pygame.MOUSEBUTTONUP)
+        self.assertEqual(app.screen, 'setup')
+        pointer(pygame.MOUSEBUTTONDOWN)
+        app.message = 'Authored alert'
+        app.render()
+        pointer(pygame.MOUSEBUTTONUP, (240, 553))
+        self.assertEqual(app.message, 'Authored alert')
+        pointer(pygame.MOUSEBUTTONDOWN, (240, 553))
+        self.assertEqual(app.pressed, ('dismiss',))
+        pointer(pygame.MOUSEBUTTONUP, (240, 553))
+        self.assertEqual(app.message, '')
+
+
+    def test_episode_browser_lists_zips_and_selection_uses_shared_importer(self):
+        app = self.make_app()
+        episode_zip = (self.root / 'episodes.ZIP').resolve()
+        episode_zip.touch()
+        (self.root / 'notes.txt').touch()
+        app.folder = self.root
+        app.browse('episodes')
+        self.assertIn(episode_zip, app.files)
+        self.assertNotIn((self.root / 'notes.txt').resolve(), app.files)
+        with patch.object(app, 'import_paths') as importer:
+            app.command(('file', episode_zip))
+            importer.assert_called_once_with([episode_zip])
+
+    def test_about_displays_runtime_version_and_opens_project_only_on_request(self):
+        from exp_runtime.app_info import PROJECT_URL
+        from unittest.mock import Mock
+        app = self.make_app()
+        opener = Mock()
+        app.url_opener = opener
+        app.screen = 'help'
+        with patch('exp_runtime.desktop_menu.runtime_version', return_value='9.8.7'), \
+                patch.object(app.renderer, 'label', wraps=app.renderer.label) as label:
+            app.render()
+            self.assertIn('EXP Runtime v9.8.7', [call.args[0] for call in label.call_args_list])
+        self.assertIn(('project',), [command for _, command in app.buttons])
+        opener.assert_not_called()
+        app.command(('project',))
+        opener.assert_called_once_with(PROJECT_URL)
+        app.url_opener = None
+        with patch('webbrowser.open', return_value=True) as browser:
+            app.command(('project',))
+            browser.assert_called_once_with(PROJECT_URL)
+
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content is unavailable')
     def test_main_menu_navigation_resizing_pause_and_live_resume(self):
         import pygame
@@ -240,6 +324,8 @@ class ApplicationTests(unittest.TestCase):
         app.window = pygame.display.set_mode((800, 600), pygame.RESIZABLE)
         app.render()
         self.assertEqual(len(app.buttons), 6)
+        self.assertEqual(app.buttons[3][1], ('switch_games',))
+        self.assertTrue(all(app.renderer.menu_fonts[1].glyph(c) for c in 'SwitchGame'))
         rect, command = app.buttons[0]
         point = (app.viewport.x + rect.centerx * app.viewport.width / 320,
                  app.viewport.y + rect.centery * app.viewport.height / 480)

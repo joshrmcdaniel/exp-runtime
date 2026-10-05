@@ -275,6 +275,8 @@ class ChoiceTests(unittest.TestCase):
         x = ui.viewport.x + rect.centerx * ui.viewport.width / 480
         y = ui.viewport.y + rect.centery * ui.viewport.height / 720
         ui.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=(x, y)))
+        self.assertEqual(ui.session.remaining_ms, 750)
+        ui.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=(x, y)))
         self.assertEqual(ui.session.pending.request.args, (88,))
         self.assertEqual(ui.session.engine.result_cells[0], 88)
         self.assertIsNone(ui.error)
@@ -315,4 +317,5 @@ class ChoiceTests(unittest.TestCase):
         gear = next(rect for rect, command in ui.buttons if command == ('menu',))
         self.assertFalse(rect.colliderect(gear))
         ui.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=rect.center))
+        ui.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=rect.center))
         self.assertEqual(ui.session.pending.request.args, (8,))

@@ -6,6 +6,9 @@ Evidence, record schemas, and presentation limits: docs/MINIGAMES.md.
 """
 from dataclasses import dataclass, field
 from collections import Counter
+import math
+
+from .grid_motion import project
 
 NEIGHBORS = ((0, 1), (0, -1), (1, 1), (1, 0), (1, -1),
              (-1, 1), (-1, 0), (-1, -1))
@@ -89,6 +92,18 @@ class GridTransition:
 
 
 @dataclass
+class GridFragment:
+    x: float
+    y: float
+    scale: float
+    vx: float
+    vy: float
+    spin: float
+    angle: float
+    age_ms: int
+
+
+@dataclass
 class WordGrid:
     duration_ms: int
     target: int
@@ -130,6 +145,9 @@ class WordGrid:
     board_entry_ms: int = 0
     banner: GridBanner | None = None
     transition: GridTransition | None = None
+    pop_ms: dict[int, int] = field(default_factory=dict)
+    explosions: list[list[GridFragment]] = field(default_factory=list)
+    glint_ms: int = -4000
 
     @property
     def problem(self):
@@ -239,6 +257,7 @@ class WordGrid:
         p = self.problem
         self.round_ms = self.round_limit_ms
         self.selection, self.bad_prefix, self.dragging = [], [], False
+        self.pop_ms = {}
         self.round += 1
         if p.fixed_board is not None:
             self.board = [p.fixed_board[y * (p.width + 1) + x]
@@ -283,6 +302,7 @@ class WordGrid:
             self.bad_prefix.append(index)
         # Native move handler submits immediately when the full word matches.
         if self.selection[0] in self.starts and self.selected_text in self.problem.words:
+            self.break_tiles(random)
             self.last_delta = (self.initial_starts - len(self.starts) + 1) * 100
             self.score += self.last_delta
             self.delta_ms = 600
@@ -297,6 +317,39 @@ class WordGrid:
             self.sound(8110, 8111)  # 000c3874 requests both sounds, no random draw.
             return True
         return False
+
+    def break_tiles(self, random):
+        # Android 000c3cb0/000d072c; iOS CubeExplosion::init 0009542c.
+        # Twenty concurrent bursts, eight fragments each, twelve native random
+        # draws per fragment. These belong to gameplay state, never rendering.
+        p = self.problem
+        for index in self.selection:
+            if len(self.explosions) < 20:
+                x, y, _ = project(p.width, p.height, index % p.width * 522 + 225,
+                                   index // p.width * 522 + 225)
+                scale = (y - 150) * .0024242424 + 1
+                burst = []
+                for _ in range(8):
+                    burst.append(GridFragment(x + random.signed_below(50), y + random.signed_below(50),
+                                               scale, float(random.signed_below(250)),
+                                               float(random.signed_below(350) - 250),
+                                               float(random.signed_below(360)), float(random.below(360)),
+                                               random.below(5000)))
+                self.explosions.append(burst)
+            self.pop_ms[index] = 601  # One-ms delay, then the 600-ms native pop.
+
+    def tick_fragments(self, dt):
+        self.pop_ms = {index: remaining - dt for index, remaining in self.pop_ms.items() if remaining >= dt}
+        self.glint_ms = min(100_000_000, self.glint_ms + dt)
+        for burst in self.explosions:
+            for fragment in burst:
+                fragment.age_ms += dt
+                fragment.x += fragment.vx * dt / 1000
+                fragment.y += fragment.vy * dt / 1000
+                fragment.angle += fragment.spin * dt / 1000
+                fragment.vy += dt * 1.6
+            burst[:] = [fragment for fragment in burst if fragment.y < 480]
+        self.explosions[:] = [burst for burst in self.explosions if burst]
 
     def pointer(self, phase, index, random):
         if phase not in ('down', 'move', 'up', 'cancel'):
@@ -364,6 +417,7 @@ class WordGrid:
     def tick(self, elapsed_ms, random):
         # Each native grid update caps dt at 250 ms, including after a stall.
         dt = min(elapsed_ms, 250)
+        self.tick_fragments(dt)
         self.visual_ms += dt
         if self.phase in (2, 6):
             self.board_entry_ms = min(2000, self.board_entry_ms + dt)
@@ -400,6 +454,7 @@ class WordGrid:
                     self.phase, self.phase_ms = -1, 1500
                     self.banner = GridBanner('ready', 700, 800)
                 elif self.phase == -1:
+                    self.glint_ms = -4000
                     self.phase, self.phase_ms = (0, 2800) if self.tutorial else (6, 1600)
                     if not self.tutorial:
                         self.banner = GridBanner('target', 700, 1300)
@@ -409,6 +464,7 @@ class WordGrid:
                 elif self.phase == 3:
                     self.next_problem(random)
                 elif self.phase == 4:
+                    self.glint_ms = -4000
                     self.phase, self.phase_ms = (6, 1600) if self.switching_to_game else (2, 1800)
                     self.board_entry_ms = 0
                     self.tutorial_entry_ms = 500
@@ -442,6 +498,18 @@ class WordGrid:
 
     def validate(self):
         self.validate_config()
+        if (not -4000 <= self.glint_ms <= 100_000_000 or len(self.pop_ms) > len(self.board)
+                or any(not 0 <= index < len(self.board) or not 0 <= ms <= 601 for index, ms in self.pop_ms.items())
+                or len(self.explosions) > 20 or any(not 1 <= len(burst) <= 8 for burst in self.explosions)):
+            raise ValueError('Invalid grid tile animation')
+        for burst in self.explosions:
+            for f in burst:
+                if (not all(math.isfinite(v) for v in (f.x, f.y, f.scale, f.vx, f.vy, f.spin, f.angle))
+                        or not -2000 < f.x < 2000 or not -2000 < f.y < 480
+                        or not 0 < f.scale < 3 or not -250 < f.vx < 250
+                        or not -600 < f.vy < 10000 or not -360 < f.spin < 360
+                        or not -10000 < f.angle < 10000 or not 0 <= f.age_ms < 20000):
+                    raise ValueError('Invalid grid fragment')
         if (sorted(self.order) != list(range(len(self.problems)))
                 or not 0 <= self.problem_index < (len(self.tutorials) if self.tutorial else len(self.problems))):
             raise ValueError('Invalid grid problem order')

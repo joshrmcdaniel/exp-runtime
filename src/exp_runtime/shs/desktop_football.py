@@ -4,14 +4,15 @@ from functools import lru_cache
 from io import BytesIO
 import math
 
-import pygame
+from .. import graphics as pygame
+from ..desktop_pause import draw_pause_gear
 
 from ..atlas import AtlasFont, SpriteAtlas
 from .football import PLAY_FRAMES, TARGET_CENTERS
 from .football_layout import (FONT, HELP_STYLE, LABEL_STYLE, TITLE_STYLE, clamp,
                               countdown_motion, feedback_motion, feedback_text,
                               footer_id, heading_id, help_motion, legend_codes,
-                              target_position, team_name, yard_glyphs)
+                              target_position, team_name, yard_glyphs, score_strip)
 from ..menu import MenuStrings
 from ..ui_assets import ImagePack, Raster, read_ui
 
@@ -64,6 +65,40 @@ class FootballRenderer:
                     image.blit(atlas, (x, row * (font.height + font.line_gap)), (gx, gy, gw, font.height))
                 x += font.char_width(char) + font.tracking
         return image
+
+    @lru_cache(maxsize=1)
+    def score_font(self):
+        # loadImageFont(523,522) at SHS iOS 00088094. Both supplied asset
+        # profiles contain the same CS glyph sheet in semantic roles 524/525.
+        raster = SpriteAtlas.parse(read_ui(self.resources, 524)).raster(0)
+        return (AtlasFont.parse(read_ui(self.resources, 525), raster),
+                pygame.image.frombytes(raster.pixels, (raster.width, raster.height), 'RGBA').convert_alpha())
+
+    @lru_cache(maxsize=64)
+    def score_text(self, text):
+        font, atlas = self.score_font()
+        image = pygame.Surface((max(1, font.width(text)), font.height), pygame.SRCALPHA)
+        x = 0
+        for char in text:
+            glyph = font.glyph(char)
+            if glyph is not None and char != ' ':
+                gx, gy, gw = glyph
+                image.blit(atlas, (x, 0), (gx, gy, gw, font.height))
+            x += font.char_width(char) + font.tracking
+        return image
+
+    def scoreboard(self, game):
+        font, _ = self.score_font()
+        home, away = (team_name(self.strings(), selector) for selector in game.teams)
+        frame, offset = score_strip(font.width(home), font.width(away))
+        literals = self.atlas().literals(frame)
+        center = 253 + min(x for _, x, _ in literals) + offset
+        self.composite(frame, 253, 50)
+        for text, x, width in ((home, center - 28 - font.width(home), 0),
+                               (str(game.home), center - 24, 17), ('-', center - 3, 6),
+                               (str(game.away), center + 7, 17), (away, center + 28, 0)):
+            image = self.score_text(text)
+            self.canvas.blit(image, (x + int((width - font.width(text)) / 2) if width else x, 42))
 
     def blit(self, image, x, y, *, scale=1., scale_y=None, alpha=1., angle=0., center=False):
         scale_y = scale if scale_y is None else scale_y
@@ -165,13 +200,7 @@ class FootballRenderer:
         self.hud_digits(str(max(0, min(100, distance))), 186, 37, 20)
         seconds = max(0, math.ceil(game.remaining_ms / 1000))
         self.hud_digits(f'{seconds // 60}:{seconds % 60:02}', 165, 37, clock=True)
-        self.node(36, 109, 43, scale=1.3, scale_y=1.)
-        self.node(37, 133, 42, scale=1.42, scale_y=1.)
-        self.node(36, 243, 43, scale=1.3, scale_y=1., angle=180)
-        for text, x in ((team_name(strings, game.teams[0]), 133), (str(game.home), 164),
-                        (str(game.away), 195), (team_name(strings, game.teams[1]), 224)):
-            self.label(text, x, 45, center=True)
-        self.label('-', 174, 64, center=True)
+        self.scoreboard(game)
 
     def targets(self, game):
         for target, (x, y) in zip(game.targets, TARGET_CENTERS):
@@ -282,7 +311,7 @@ class FootballRenderer:
             self.blit(self.frame(motion.frame), 159.5, 240, scale=motion.scale,
                       alpha=motion.alpha, angle=motion.angle, center=True)
         self.canvas.blit(self.art.frame(126, 47), (0, 431))
-        self.canvas.blit(self.art.frame(126, 49), (0, 408))
+        draw_pause_gear(self.canvas, self.art)
         footer = footer_id(game)
         if footer is not None:
             self.label(self.strings()[footer], 180, 462, center=True)

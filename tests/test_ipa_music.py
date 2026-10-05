@@ -214,6 +214,8 @@ class IPAMusicImportTests(unittest.TestCase):
             # or original menu art in this authored-container test.
             with ThreadPoolExecutor(max_workers=1) as executor:
                 app = Application.__new__(Application)
+                from exp_runtime.pointer import ButtonPress
+                app.press, app.game = ButtonPress(), None
                 app.selected_game = 'shs'
                 app.job, app.library, app.executor = None, None, executor
                 app.directory = self.root / order[0].suffix[1:]

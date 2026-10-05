@@ -2,10 +2,12 @@
 from functools import lru_cache
 from io import BytesIO
 
-import pygame
+from . import graphics as pygame
 
 from .content import ContentError
 from .dialogue_notice import NOTICE_FONT, NOTICE_STYLE, NoticeMotion
+from .fonts import TextStyle
+from .menu import MenuStrings
 from .ui_assets import ImagePack, Raster, UIAssetError, read_ui
 
 
@@ -155,6 +157,46 @@ class DialogueRenderer:
             self.canvas.blit(image, (round(x + glyph.x * motion.scale),
                                      round(y + glyph.y * motion.scale - motion.glyph_rise(index))))
 
+    @lru_cache(maxsize=4)
+    def continue_tab(self, theme):
+        # GameModel::setBubbleSex chooses the supplied skin's frames 3–6.
+        tab = self.frame(126, {1: 5, 2: 3, 3: 6}.get(theme, 4)).copy()
+        font = 'TrebuchetMS_Bold14'
+        metrics = self.text.font(font)
+        height = getattr(metrics, 'cap_height', 14)
+        label = self.text.layout(font, MenuStrings.load(self.resources)[29], tab.get_width(), TextStyle(height))
+        left, top, right, bottom = label.ink_bounds
+        self.text.draw_layout(tab, font, label, (tab.get_width() - right - left) / 2,
+                              (tab.get_height() - bottom - top) / 2)
+        return tab
+
+    def draw_continue(self, box, theme, motion):
+        scale = motion.continue_scale
+        if scale <= 0:
+            return
+        tab = self.continue_tab(theme)
+        width, height = tab.get_size()
+        if scale < 1:
+            tab = pygame.transform.smoothscale(tab, (width, max(1, round(height * scale))))
+        # expandContinue: center = (bubble.width - 49.5, bubble.height + 8.5).
+        self.canvas.blit(tab, (box.x + box.width - width,
+                               box.y + box.height + round((height - tab.get_height()) / 2)))
+
+    @lru_cache(maxsize=1)
+    def footer_hint(self):
+        # GameModel::init / layout 18 node 2: ArialMT 11, white alpha 0xb0,
+        # centered in the 252x18 tooltip region below the story panel.
+        strings = MenuStrings.load(getattr(self.resources, 'library', self.resources))
+        name = 'ArialMT11'
+        label = self.text.layout(name, strings[36], 252, TextStyle(11, 0))
+        layer = pygame.Surface((252, 18), pygame.SRCALPHA).convert_alpha()
+        left, top, right, bottom = label.ink_bounds
+        self.text.draw_layout(layer, name, label,
+                              (252 - (right - left)) / 2 - left,
+                              (18 - (bottom - top)) / 2 - top)
+        layer.set_alpha(176)
+        return layer
+
     def draw(self, target, session):
         details = session.pending.details
         key = id(session), session.scene, session.vm.steps_executed, details['page_start']
@@ -194,8 +236,10 @@ class DialogueRenderer:
                               source_end=motion.revealed)
         self.name_layer.set_alpha(motion.name_alpha)
         self.canvas.blit(self.name_layer, (0, 0))
-        # Layout 18's footer. Runtime save/load affordances remain host UI
-        # until the original menu callbacks are implemented.
+        self.draw_continue(page.box, details['theme'], motion)
+        # Layout 18's footer and its original instruction, separate from the
+        # animated Continue tab attached to the dialogue box.
         self.canvas.blit(self.frame(126, 47), (0, 431))
+        self.canvas.blit(self.footer_hint(), (63, 459))
         target.blit(pygame.transform.smoothscale(self.canvas, target.get_size()), (0, 0))
         return page
