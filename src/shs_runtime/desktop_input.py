@@ -8,7 +8,7 @@ from .content import ContentError
 from .fonts import TextStyle, layout_label
 from .menu import MenuStrings
 from .text_input import CURSOR_FONT, NAME_FONT
-from .ui_assets import Rect
+from .ui_assets import Rect, read_ui
 
 
 BLUE = (41, 104, 221)
@@ -23,7 +23,7 @@ class InputRenderer:
 
     @lru_cache(maxsize=1)
     def strings(self):
-        return MenuStrings.parse(self.resources.library.read_asset(13))
+        return MenuStrings.parse(read_ui(self.resources.library, 13))
 
     @lru_cache(maxsize=3)
     def layout_image(self, index, width, height):
@@ -71,24 +71,69 @@ class InputRenderer:
         return replace(layout, glyphs=tuple(glyphs)), max(widths, default=0), scale
 
     def _image(self, asset):
-        image = self.art.image(asset)
+        image = self.art.ui_image(asset)
         if image is None:
             raise ContentError(f'Name-entry artwork {asset} is missing')
         return image
 
     def alert(self):
         # 707 is the alert's clickable panel, not the ordinary input screen.
-        self.canvas.blit(self._image(707), ALERT_RECT[:2])
+        ios = getattr(self.resources.library, 'kind', 'apk') == 'ipa'
+        if ios:
+            # The IPA uses UIKit's UIAlertView, with no exported panel image.
+            # Use the runtime's existing message skin for the desktop modal.
+            self.art.box(self.canvas, Rect(30, 170, 260, 140), 1)
+        else:
+            self.canvas.blit(self._image(707), ALERT_RECT[:2])
         strings = self.strings()
         for caption, origin, color in ((strings[258], (130, 169), (255, 255, 255)),
                                         (strings[164], (140, 275), (0, 0, 0))):
-            label = self.text.layout('ArialRoundedMTBold20', caption, 2**31, TextStyle(16, -16, color))
+            label = self.text.layout('ArialRoundedMTBold20', caption, 2**31, TextStyle(16, -16, BLUE if ios else color))
             self.text.draw_layout(self.canvas, 'ArialRoundedMTBold20', label, *origin)
         label = layout_label(self.text.font('ArialRoundedMTBold16'), strings[260],
-                             280, 160, TextStyle(16, 2), 0x16)
+                             280, 160, TextStyle(16, 2, BLUE if ios else (255, 255, 255)), 0x16)
         # GL node (160,375), size (280,160), anchor (1/2,1/2).
         self.text.draw_layout(self.canvas, 'ArialRoundedMTBold16', label, 20, 185)
         return [(pygame.Rect(ALERT_RECT), ('input_dismiss',))]
+
+    def draw_ipa_entry(self, details, cursor_visible):
+        """000a0238/000a0880: layout 46 supplies the entire entry panel."""
+        bank = self.resources.dialogue_layout().bank
+        prompt_rect = bank.rectangle(46, 23)
+        prompt = self.text.layout('ArialRoundedMTBold16', details['prompt'], prompt_rect.width,
+                                  TextStyle(16, 10, BLUE))
+        height = max(1, round(prompt.height))
+        bounds = Rect((320 - bank.layouts[46].width) // 2, 151 - height,
+                      bank.layouts[46].width, bank.layouts[46].height + height - prompt_rect.height)
+        title_rect = bank.rectangle(46, 18, bounds)
+        title = self.text.layout('ArialRoundedMTBold30', details['title'], title_rect.width,
+                                 TextStyle(30, 0, BLUE))
+        active_header = 1 if title.height > title_rect.height else 10
+        hidden_until = 0
+        for number, (node, rect) in enumerate(bank.walk(46, bounds), 1):
+            if number <= hidden_until:
+                continue
+            visible = node.flags & 16 and (number not in (1, 10) or number == active_header)
+            if node.kind == 7 and not visible:
+                hidden_until = number + sum(1 for _ in bank.walk(node.payload[0]))
+                continue
+            if node.kind == 1 and visible and rect.width > 0 and rect.height > 0:
+                slot, frame = node.payload
+                image = self.art.frame({0: 126, 2: 204, 3: 16}[slot], frame)
+                self.canvas.blit(pygame.transform.scale(image, (rect.width, rect.height)), (rect.x, rect.y))
+        title_y = bank.rectangle(46, 9 if active_header == 1 else 18, bounds).y
+        self.text.draw_layout(self.canvas, 'ArialRoundedMTBold30', title,
+                              title_rect.x + (title_rect.width - title.width) / 2, title_y)
+        prompt_rect = bank.rectangle(46, 23, bounds)
+        self.text.draw_layout(self.canvas, 'ArialRoundedMTBold16', prompt, prompt_rect.x, prompt_rect.y)
+        entry = bank.rectangle(46, 44, bounds)
+        draft = details.get('draft', details['default'])
+        entered = self.text.layout('PajamaHip24', draft, 2**31, TextStyle(24))
+        self.text.draw_layout(self.canvas, 'PajamaHip24', entered, entry.x, entry.y)
+        if cursor_visible:
+            cursor = self.text.layout('PajamaHip24', '|', 2**31, TextStyle(24))
+            self.text.draw_layout(self.canvas, 'PajamaHip24', cursor, entry.x + entered.width, entry.y)
+        return [(pygame.Rect(entry.x, entry.y, entry.width, entry.height), ('input_focus',))]
 
     def draw(self, target, session, *, error=None, cursor_visible=True):
         self.canvas.fill((0, 0, 0))
@@ -97,6 +142,8 @@ class InputRenderer:
             self.canvas.blit(background, background.get_rect(center=(160, 180)))
         if error:
             buttons = self.alert()
+        elif getattr(self.resources.library, 'kind', 'apk') == 'ipa':
+            buttons = self.draw_ipa_entry(session.pending.details, cursor_visible)
         else:
             bank = self.resources.dialogue_layout().bank
             width = bank.layouts[46].width + 22

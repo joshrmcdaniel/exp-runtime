@@ -4,6 +4,7 @@ import math
 
 import pygame
 
+from .ui_assets import read_ui
 from .atlas import AtlasFont, SpriteAtlas
 from .grid_layout import clamp, ease, heading_lines, prompt_position, tutorial_box
 from .menu import MenuStrings
@@ -17,7 +18,7 @@ class GridRenderer:
 
     @lru_cache(maxsize=12)
     def atlas(self, asset):
-        return SpriteAtlas.parse(self.resources.read_asset(asset))
+        return SpriteAtlas.parse(read_ui(self.resources, asset))
 
     @lru_cache(maxsize=96)
     def frame(self, asset, index):
@@ -26,11 +27,11 @@ class GridRenderer:
 
     @lru_cache(maxsize=4)
     def font(self, image):
-        return AtlasFont.parse(self.resources.read_asset(image + 1), self.atlas(image).image)
+        return AtlasFont.parse(read_ui(self.resources, image + 1), self.atlas(image).image)
 
     @lru_cache(maxsize=1)
     def strings(self):
-        return MenuStrings.parse(self.resources.read_asset(13))
+        return MenuStrings.parse(read_ui(self.resources, 13))
 
     @lru_cache(maxsize=512)
     def glyph(self, asset, char):

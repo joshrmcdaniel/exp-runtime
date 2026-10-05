@@ -15,6 +15,12 @@ NAME_ENTRY_ERROR = (
 )
 
 
+def input_fonts(resources):
+    if getattr(getattr(resources, 'library', None), 'kind', 'apk') == 'ipa':
+        return 'PajamaHip24', 'PajamaHip24'
+    return NAME_FONT, CURSOR_FONT
+
+
 def _alphanumeric(text: str) -> bool:
     return all('a' <= c <= 'z' or 'A' <= c <= 'Z' or '0' <= c <= '9' for c in text)
 

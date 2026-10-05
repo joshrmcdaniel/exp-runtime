@@ -147,7 +147,7 @@ three labels and 533 for the fourth; the renderer follows that selection.
 ## 4. Lifecycle and persistence
 
 ```text
-No library -> Setup -> Choose/drop APK -> Validate/copy -> Main menu
+No library -> Setup -> Choose/drop APK or IPA -> Validate/copy -> Main menu
 Main menu -> Play or episode list -> Episode -> Play/Resume -> Session
 Session -> Pause -> Main menu -> Automatic checkpoint -> Main menu
 Session -> Service 7/63 -> Terminal checkpoint -> Main menu (no Resume)

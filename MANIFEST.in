@@ -13,6 +13,7 @@ include docs/GRID_UI.md
 include docs/FOOTBALL_UI.md
 include docs/TITLE_SCREENS.md
 include docs/NAME_INPUT.md
+include docs/IPA.md
 include docs/MAIN_MENU.md docs/STORY_SERVICES.md docs/EPISODE_CATALOG.md
 include tools/build_desktop.py tools/audit_format.py tools/audit_vm.py
 include tools/audit_runtime.py tools/audit_ui_assets.py

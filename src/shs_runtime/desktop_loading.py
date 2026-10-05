@@ -5,7 +5,7 @@ import pygame
 
 from .fonts import TextStyle
 from .menu import MenuStrings
-from .ui_assets import Rect
+from .ui_assets import Rect, read_ui
 
 
 class LoadingRenderer:
@@ -28,7 +28,7 @@ class LoadingRenderer:
                     slot, frame = node.payload
                     image = self.art.frame({0: 126, 2: 204}[slot], frame)
                     layer.blit(pygame.transform.scale(image, (rect.width, rect.height)), (rect.x, rect.y))
-        strings = MenuStrings.parse(self.resources.library.read_asset(13))
+        strings = MenuStrings.parse(read_ui(self.resources.library, 13))
         title = self.text.layout('ArialRoundedMTBold20', strings[31], 320, TextStyle(20, 0, (41, 104, 221)))
         message = self.text.layout('ArialRoundedMTBold16', strings[35], 300, TextStyle(15, 0, (41, 104, 221)))
         self.text.draw_layout(layer, 'ArialRoundedMTBold20', title, 160 - title.width / 2, 170 + title.height)

@@ -5,9 +5,11 @@ reproduce the original interface and gameplay. It executes the original KiWi
 scripts and reads graphics, fonts, audio and episode data from files supplied
 by each player.
 
-You need your own **SHS Android 1.0.9 APK** and any additional **EXP episodes**
-you want to play. The importer reads those files locally. Game content is not
-included in this project and is not downloaded by it.
+You need your own **SHS Android 1.0.9 APK** or **SHS IPA with compatible assets**,
+plus any additional **EXP episodes** you want to play. The importer reads those
+files locally. Game content is not included in this project or downloaded by it.
+IPA import checks the SHS bundle identifier and required assets; its version
+number is informational. See [IPA support](docs/IPA.md) for details.
 
 ## Download an app
 
@@ -56,9 +58,9 @@ uv run --locked --extra desktop shs
 
 ## Add your game files
 
-1. Launch the app and choose your APK on the setup screen.
+1. Launch the app and choose your APK or IPA on the setup screen.
 2. Add EXP files or an episode folder through Options, or drag them onto the
-   menu. The APK's bundled episodes, including Football Star, are imported
+   menu. The game's bundled episodes, including Football Star, are imported
    automatically.
 3. Select an episode in Play/Resume. Imported episodes and progress persist
    when you close the app.
@@ -80,9 +82,10 @@ separately. Without that optional file, unknown groups use numeric pack names.
 
 Existing libraries from `exp-decoder-python` still work: choose **Open Library**
 and select the existing library directory. It can stay outside this project.
-The content IDs, library schema, save schema and per-user application-data
-locations are unchanged. See [runtime setup](docs/RUNTIME.md) for paths,
-controls, formats and command-line import.
+Existing Android content identities and saves are preserved. IPA libraries
+use a separate source profile and installed fonts, falling back to the system
+default when an original face is absent. See [runtime setup](docs/RUNTIME.md)
+for paths, controls, formats and command-line import.
 
 ## Current state
 
@@ -107,6 +110,7 @@ To contribute code, tests, documentation or compatibility reports, start with
 - [KiWi VM](docs/VM_SPEC.md): bytecode, all core opcodes, memory, calls and yields.
 - [Engine services](docs/ENGINE_ABI.md): native service contracts and coverage.
 - [UI assets](docs/UI_ASSETS.md) and [UI fidelity](docs/UI_FIDELITY.md).
+- [IPA import and system fonts](docs/IPA.md).
 - [Main menu](docs/MAIN_MENU.md) and [episode catalog](docs/EPISODE_CATALOG.md).
 - [Episode introductions and week cards](docs/TITLE_SCREENS.md).
 - [Mini games](docs/MINIGAMES.md) and [story services](docs/STORY_SERVICES.md).

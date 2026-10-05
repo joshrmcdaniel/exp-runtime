@@ -10,6 +10,12 @@ import struct
 from .content import ContentError, MAX_PAYLOAD
 
 
+def read_ui(resources, role):
+    """Read a host UI role; authored resource fixtures may expose only IDs."""
+    reader = getattr(resources, 'read_ui_resource', None) or resources.read_asset
+    return reader(role)
+
+
 class UIAssetError(ContentError):
     pass
 

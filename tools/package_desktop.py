@@ -21,7 +21,8 @@ import zipfile
 TARGETS = ('windows-x64', 'linux-x64', 'macos-arm64', 'macos-x64')
 FORBIDDEN_SUFFIXES = {'.apk', '.ipa', '.exp', '.kiw', '.sav', '.c', '.asm'}
 FORBIDDEN_NAMES = {
-    'libshs09.so', 'library.json', 'player.json', 'launcher.json',
+    'libshs09.so', 'surviving_hs', 'surviving_hs.app', 'res_generated',
+    'library.json', 'player.json', 'launcher.json',
     '.shs-library', 'episodes', 'extract', 'game-assets', 'original-screenshots',
     'converted_assets', 'debug_images', 'saves', 'renpy',
 }

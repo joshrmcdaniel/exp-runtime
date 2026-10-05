@@ -3,6 +3,21 @@
 User-visible changes are recorded here. Changes awaiting a versioned release
 are listed under Unreleased.
 
+## Unreleased
+
+### Added
+
+- Import an SHS IPA through setup, drag-and-drop, or `shs-tool import --ipa`
+  as an alternative to the Android APK, including its bundled episodes and
+  Football Star. Import identifies SHS by its bundle identifier and validates
+  required assets; version and build numbers are informational.
+- IPA playback uses its original UI assets, including its timer wedges,
+  name-entry panel and football graphics. System fonts use the installed
+  original face when available, then the system default. Font rendering and
+  missing-content limits are documented in [IPA support](docs/IPA.md). The
+  inspected IPA omits ten music tracks the original app downloaded separately;
+  scenes requesting these tracks remain silent with the IPA alone.
+
 ## v0.1.3
 
 ### Added

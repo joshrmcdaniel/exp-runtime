@@ -8,7 +8,7 @@ from .content import ContentError
 from .fonts import TextStyle, layout_label
 from .menu import MenuStrings
 from .title_screen import title_labels
-from .ui_assets import Rect
+from .ui_assets import Rect, read_ui
 
 
 class TitleRenderer:
@@ -18,10 +18,10 @@ class TitleRenderer:
 
     @lru_cache(maxsize=2)
     def font(self, asset):
-        image = self.art.image(asset)
+        image = getattr(self.art, 'ui_image', self.art.image)(asset)
         if image is None:
             raise ContentError(f'Title font atlas {asset} is missing')
-        return AtlasFont.parse(self.resources.read_asset(asset + 1), Rect(0, 0, *image.get_size()))
+        return AtlasFont.parse(read_ui(self.resources, asset + 1), Rect(0, 0, *image.get_size()))
 
     @lru_cache(maxsize=64)
     def labels(self, title, subtitle):
@@ -30,7 +30,8 @@ class TitleRenderer:
 
     @lru_cache(maxsize=128)
     def label_image(self, label):
-        font, atlas = self.font(label.asset_id), self.art.image(label.asset_id)
+        font = self.font(label.asset_id)
+        atlas = getattr(self.art, 'ui_image', self.art.image)(label.asset_id)
         if not label.glyphs:
             return None, (0, 0)
         left, top = min(g.x for g in label.glyphs), min(g.y for g in label.glyphs)
@@ -53,7 +54,7 @@ class TitleRenderer:
 
     @lru_cache(maxsize=1)
     def hint(self):
-        strings = MenuStrings.parse(self.resources.library.read_asset(13))
+        strings = MenuStrings.parse(read_ui(self.resources.library, 13))
         # 0007cbbc / 0007d4c8: font registry 11, zero content size,
         # center/center alignment, GL position (180,25), white text.
         font = self.text.font('ArialMT14')

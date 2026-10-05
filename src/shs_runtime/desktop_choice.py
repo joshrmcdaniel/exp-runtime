@@ -56,8 +56,24 @@ class ChoiceRenderer:
 
     def draw_timer(self, position, elapsed_fraction):
         """00082744: base 708, then 709 swept clockwise from twelve o'clock."""
-        self.canvas.blit(self.art.frame(708, 0), position)
         fraction = min(1., max(0., elapsed_fraction))
+        if getattr(getattr(self.resources, 'library', None), 'kind', 'apk') == 'ipa':
+            # GameModel::init passes common frames 7..22 to the native iOS
+            # circle layer. Each wedge fades over its own 1/16 interval,
+            # holding opacity .8 for the first .4 of that interval.
+            for index in range(16):
+                progress = fraction * 16 - index
+                opacity = min(1., max(0., (1 - progress) / .6)) * .8
+                if opacity <= 0:
+                    continue
+                image = self.art.frame(126, 7 + index).copy()
+                quadrant = index // 4
+                x = 25 - image.get_width() if quadrant >= 2 else 25
+                y = 25 - image.get_height() if quadrant in (0, 3) else 25
+                image.set_alpha(round(opacity * 255))
+                self.canvas.blit(image, (position[0] + 6 + x, position[1] + 5 + y))
+            return
+        self.canvas.blit(self.art.frame(708, 0), position)
         if fraction <= 0:
             return
         timer = self.art.frame(709, 0).copy()

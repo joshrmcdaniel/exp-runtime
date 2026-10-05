@@ -16,6 +16,13 @@ class FontError(ContentError):
     pass
 
 
+def load_font(library, name):
+    if getattr(library, 'kind', 'apk') == 'ipa':
+        from .ios_fonts import render_font
+        return render_font(library, name)[0]
+    return BitmapFont.parse(library.read_ui_asset(f'fonts/{name}.fnt'))
+
+
 def _integer(value: str) -> int:
     # Native sscanf("%d") consumes the decimal prefix: "6.5" becomes 6.
     match = re.match(r'[+-]?[0-9]+', value)

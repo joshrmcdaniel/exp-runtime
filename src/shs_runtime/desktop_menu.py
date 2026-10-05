@@ -11,7 +11,7 @@ from .desktop_dialogue import DialogueRenderer
 from .desktop_text import BitmapTextRenderer
 from .fonts import TextStyle
 from .menu import MenuFont, MenuStrings, main_button_rects
-from .ui_assets import ImagePack, LayoutBank, Rect
+from .ui_assets import ImagePack, LayoutBank, Rect, read_ui
 
 
 BLUE = (41, 104, 221)
@@ -26,15 +26,15 @@ class MenuRenderer:
         self.fallback = pygame.font.Font(None, 20)
         self.small = pygame.font.Font(None, 17)
         if library:
-            self.bank = LayoutBank.parse(library.read_asset(14))
-            self.strings = MenuStrings.parse(library.read_asset(13))
+            self.bank = LayoutBank.parse(read_ui(library, 14))
+            self.strings = MenuStrings.parse(read_ui(library, 13))
             self.text = BitmapTextRenderer(library)
             self.art = DialogueRenderer(library, self.text, self.image)
-            self.menu_fonts = [MenuFont.parse(library.read_asset(asset)) for asset in (532, 533)]
+            self.menu_fonts = [MenuFont.parse(read_ui(library, asset)) for asset in (532, 533)]
 
     @lru_cache(maxsize=16)
     def image(self, asset):
-        data = self.library.read_asset(asset)
+        data = read_ui(self.library, asset)
         if data.startswith((b'\x89PNG', b'\xff\xd8')):
             return pygame.image.load(BytesIO(data)).convert_alpha()
         r = ImagePack.parse(data).images[0]
@@ -164,11 +164,11 @@ class MenuRenderer:
         elif screen == 'setup':
             self.panel('Surviving High School', back=False)
             self.label('Bring your game', (25, 123, 270, 30), size=20)
-            self.label('Choose your SHS Android 1.0.9 APK to get started. It includes the base assets and bundled episodes.',
+            self.label('Choose your SHS Android 1.0.9 APK or SHS IPA. It includes the base assets and bundled episodes.',
                        (25, 169, 265, 95), color=GRAY)
             self.label('You can add episode EXP files or folders afterward. Drag files onto this window, or browse below.',
                        (25, 265, 265, 85), color=GRAY)
-            self.button('Choose APK', (30, 362, 124, 32), ('browse', 'apk'))
+            self.button('Choose Game', (30, 362, 124, 32), ('browse', 'apk'))
             self.button('Open Library', (166, 362, 124, 32), ('browse', 'library'))
         elif screen == 'episodes':
             title = {'play': 'Play / Resume', 'weekly': self.strings[127], 'all': self.strings[91]}[app.scope]
@@ -254,7 +254,7 @@ class MenuRenderer:
                            (30, 224, 260, 110), color=GRAY)
                 self.button('Restart', (99, 349, 122, 32), ('start', False))
             else:
-                self.label('Bundled with your APK' if is_bundled(record) else 'Imported episode',
+                self.label('Bundled with your game' if is_bundled(record) else 'Imported episode',
                            (30, 231, 260, 35), color=GRAY, center=True)
                 can_resume = app.can_resume(record['id'])
                 self.button('Resume' if can_resume else 'Play', (83, 298, 154, 33), ('start', True))
@@ -270,7 +270,7 @@ class MenuRenderer:
         elif screen == 'library':
             self.panel('Content Library')
             self.label(f'{len(app.library.episodes)} imported episodes', (29, 129, 262, 45), size=20)
-            self.label('The APK supplies the base game assets. Episode files supply their own stories and artwork. Your originals are kept intact.',
+            self.label('Your APK or IPA supplies the base game assets. Episode files supply their own stories and artwork. Your originals are kept intact.',
                        (29, 197, 262, 95), color=GRAY)
             self.button('Add Episodes', (30, 315, 260, 34), ('browse', 'episodes'))
             self.button('Open Another Library', (30, 369, 260, 34), ('browse', 'library'))
@@ -283,7 +283,7 @@ class MenuRenderer:
             self.label('SHS Runtime\nAn independent engine reconstruction. Some game features remain unimplemented.',
                        (29, 349, 262, 62), size=11, color=GRAY)
         elif screen == 'browser':
-            self.panel({'apk': 'Choose APK', 'episodes': 'Add Episodes', 'library': 'Open Library'}[app.browser_kind])
+            self.panel({'apk': 'Choose Game', 'episodes': 'Add Episodes', 'library': 'Open Library'}[app.browser_kind])
             pygame.draw.rect(self.canvas, (230, 236, 244), (19, 110, 282, 37), border_radius=4)
             self.label(app.path_text, (24, 114, 272, 30), size=11)
             self.buttons.append((pygame.Rect(19, 110, 282, 37), ('path',)))

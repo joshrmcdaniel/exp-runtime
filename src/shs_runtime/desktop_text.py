@@ -5,7 +5,7 @@ from io import BytesIO
 
 import pygame
 
-from .fonts import BitmapFont, FontError, layout_text
+from .fonts import FontError, layout_text, load_font
 
 
 class BitmapTextRenderer:
@@ -16,9 +16,14 @@ class BitmapTextRenderer:
 
     def font(self, name):
         if name not in self.fonts:
-            font = BitmapFont.parse(self.library.read_ui_asset(f'fonts/{name}.fnt'))
+            font = load_font(self.library, name)
             try:
-                atlas = pygame.image.load(BytesIO(self.library.read_ui_asset('fonts/' + font.page)))
+                if getattr(self.library, 'kind', 'apk') == 'ipa':
+                    from .ios_fonts import render_font
+                    image = render_font(self.library, name)[1]
+                    atlas = pygame.image.frombytes(image.tobytes(), image.size, 'RGBA')
+                else:
+                    atlas = pygame.image.load(BytesIO(self.library.read_ui_asset('fonts/' + font.page)))
             except pygame.error as error:
                 raise FontError(f'Cannot decode font atlas {font.page}: {error}') from error
             width, height = atlas.get_size()

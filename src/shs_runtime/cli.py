@@ -28,8 +28,10 @@ def _build_parser() -> argparse.ArgumentParser:
     trace_parser.add_argument("--max-steps", type=int, default=100_000)
     trace_parser.add_argument("--max-events", type=int, default=10_000)
 
-    import_parser = subparsers.add_parser("import", help="Create a local library from your APK and episode files.")
-    import_parser.add_argument("--apk", type=Path, required=True, help="Your SHS Android 1.0.9 APK.")
+    import_parser = subparsers.add_parser("import", help="Create a local library from your APK or IPA and episode files.")
+    source = import_parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--apk", type=Path, help="Your SHS Android 1.0.9 APK.")
+    source.add_argument("--ipa", type=Path, help="Your SHS IPA with compatible game assets.")
     import_parser.add_argument("--episodes", type=Path, nargs="+", action="extend", default=[],
                                help="EXP files or directories; directories are scanned recursively.")
     import_parser.add_argument("--library", type=Path, default=Path(".shs-library"),
@@ -69,7 +71,7 @@ def main(argv: list[str] | None = None) -> None:
 
         try:
             if args.command == "import":
-                manifest = import_game(args.apk, args.episodes, args.library)
+                manifest = import_game(args.apk or args.ipa, args.episodes, args.library)
                 print(f"Imported {len(manifest['episodes'])} episodes into {args.library}")
                 return
             if args.command == 'play':
@@ -86,7 +88,7 @@ def main(argv: list[str] | None = None) -> None:
                 try:
                     if args.episode:
                         if not app.library:
-                            raise ContentError(app.message or 'Import your APK before selecting an episode')
+                            raise ContentError(app.message or 'Import your APK or IPA before selecting an episode')
                         app.selected = app.library.select(args.episode)['id']
                         app.start(resume=args.resume, load_path=args.load)
                 except Exception:

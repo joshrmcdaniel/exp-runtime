@@ -6,7 +6,7 @@ import pygame
 
 from .fonts import TextStyle
 from .menu import MenuStrings
-from .ui_assets import Rect
+from .ui_assets import Rect, read_ui
 
 
 BLUE = (41, 104, 221)
@@ -19,7 +19,7 @@ class MessageRenderer:
 
     @lru_cache(maxsize=1)
     def strings(self):
-        return MenuStrings.parse(self.resources.library.read_asset(13))
+        return MenuStrings.parse(read_ui(self.resources.library, 13))
 
     @lru_cache(maxsize=8)
     def layout_image(self, index, width, height):

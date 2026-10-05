@@ -53,7 +53,8 @@ class PackagingTests(unittest.TestCase):
 
     def test_game_inputs_in_the_app_abort_packaging(self):
         (self.bundle / 'SHS Runtime.exe').write_bytes(b'authored executable fixture')
-        for name in ('GAME.APK', 'story.EXP', 'library.json', 'libshs09.so', 'native-vm.c', 'player.shs-auto.json'):
+        for name in ('GAME.APK', 'GAME.IPA', 'story.EXP', 'library.json', 'libshs09.so',
+                     'Surviving_HS', 'Surviving_HS.app', 'res_generated', 'native-vm.c', 'player.shs-auto.json'):
             with self.subTest(name=name):
                 path = self.bundle / name
                 path.write_bytes(b'authored prohibited fixture')

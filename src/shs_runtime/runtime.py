@@ -17,7 +17,7 @@ from .speaker_names import SpeakerNames
 from .title_screen import TitleScreen
 from .loading import loading_waits
 from .survey import RESPONSE_STEPS, SURVEY_TEXT, SURVEY_TITLE, is_survey, script_response
-from .text_input import CURSOR_FONT, NAME_FONT, validate_name
+from .text_input import input_fonts, validate_name
 from .minigames import NativeRandom, RAND48_INITIAL, RAND48_MASK
 from .vm import KiwiVM, StopKind, VMError, VMStop, signed16
 
@@ -122,11 +122,12 @@ class Session:
                                                     names=self.engine.speaker_names)
 
     def name_input_metrics(self):
-        """Use the same APK glyph advances for interactive and headless input."""
+        """Use the selected game's glyph advances for both input paths."""
         if not hasattr(self.resources, 'dialogue_layout'):
             return dict(font=None, cursor_width=0)
         layout = self.resources.dialogue_layout()
-        return dict(font=layout.font(NAME_FONT), cursor_width=layout.font(CURSOR_FONT).glyph('|').advance)
+        name, cursor = input_fonts(self.resources)
+        return dict(font=layout.font(name), cursor_width=layout.font(cursor).glyph('|').advance)
 
     def _prepare_dialogue(self, *, new_name=False):
         details = self.pending.details
@@ -450,7 +451,7 @@ class Session:
                 state = deepcopy(state)
                 state['engine']['panel'].update(presentation_mode=0, theme=-1, emphasis_theme=1)
             if state['content'] != resources.identity:
-                raise SaveError('Save requires the same imported APK and episode')
+                raise SaveError('Save requires the same imported game and episode')
             if type(state['scene']) is not int or not 0 <= state['scene'] <= 65535:
                 raise SaveError('Invalid saved scene ID')
             session = cls(resources, start_script=state['scene'])

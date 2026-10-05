@@ -3,8 +3,8 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
-from .fonts import BitmapFont, TextLayout, TextStyle, layout_text
-from .ui_assets import LayoutBank, Rect
+from .fonts import load_font, TextLayout, TextStyle, layout_text
+from .ui_assets import LayoutBank, Rect, read_ui
 from .speaker_names import NAME_FONTS, SpeakerNames, fit_speaker_ink, preview_speaker, speaker_label
 
 
@@ -43,11 +43,11 @@ class DialoguePage:
 class DialogueLayout:
     def __init__(self, resources):
         self.resources = resources
-        self.bank = LayoutBank.parse(resources.read_asset(14))
+        self.bank = LayoutBank.parse(read_ui(resources, 14))
 
     @lru_cache(maxsize=8)
     def font(self, name):
-        return BitmapFont.parse(self.resources.library.read_ui_asset(f'fonts/{name}.fnt'))
+        return load_font(self.resources.library, name)
 
     def prepare_name(self, details, names: SpeakerNames):
         names.basis = deepcopy(names.fonts)

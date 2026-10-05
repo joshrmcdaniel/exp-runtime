@@ -6,6 +6,11 @@ The working reference is the supplied SHS Android 1.0.9 APK and its loaded
 current appearance is temporary. See [RUNTIME.md](RUNTIME.md) for implementation
 order and [ENGINE_ABI.md](ENGINE_ABI.md) for game/UI behavior contracts.
 
+IPA playback now reads the supplied iOS asset bank. [IPA.md](IPA.md) records
+its native timer, name-entry and football differences, installed-font lookup
+and user-requested system-default fallback. The Android bitmap-font evidence
+below does not establish identical iOS font metrics or rasterization.
+
 ## Confirmed clues in the supplied APK
 
 `assets/Assets/fonts/` contains **18 bitmap-font sets**. Every set has a text

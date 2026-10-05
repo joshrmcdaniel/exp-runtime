@@ -4,7 +4,9 @@ Revision: 2026-09-13. Reference: Android 1.0.9 `libshs09.so`, native SHA-256
 `b17aa4c71bc46666d414cafae6fac92bbcd755f3dcccd73975cf05f4a119665b`.
 These are resource **payload** formats used by the engine, separate from the
 [EXP envelope](./SCHEMA.md) and [KiWi bytecode](./VM_SPEC.md).
-All artwork and layout records come from each player's APK/episodes.
+All artwork and layout records come from each player's APK/IPA and episodes.
+The numeric IDs below describe Android. [IPA.md](IPA.md#resource-banks-and-local-extraction)
+records the inspected iOS mapping and its separate host UI role lookup.
 
 The compatible readers live in `src/shs_runtime/ui_assets.py`. Signed counts must
 be nonnegative in supported inputs; reads must fit the payload, and decoded

@@ -5,7 +5,7 @@ import pygame
 
 from .fonts import TextStyle
 from .menu import MenuStrings
-from .ui_assets import Rect
+from .ui_assets import Rect, read_ui
 
 
 class CharacterPickerRenderer:
@@ -55,7 +55,7 @@ class CharacterPickerRenderer:
         self.canvas.blit(self.art.frame(126, 47), (0, 431))
         self.canvas.blit(self.art.frame(126, 49), (0, 408))
         if self.hint is None:
-            self.hint = MenuStrings.parse(self.resources.library.read_asset(13))[37]
+            self.hint = MenuStrings.parse(read_ui(self.resources.library, 13))[37]
         hint = self.text.layout('ArialRoundedMTBold11', self.hint,
                                 247, TextStyle(11, 0, (185, 185, 185)))
         self.text.draw_layout(self.canvas, 'ArialRoundedMTBold11', hint, 63 + (252 - hint.width) / 2, 460)

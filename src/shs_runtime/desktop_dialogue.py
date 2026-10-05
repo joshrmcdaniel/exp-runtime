@@ -1,11 +1,12 @@
 """Original dialogue artwork at native logical coordinates."""
 from functools import lru_cache
+from io import BytesIO
 
 import pygame
 
 from .content import ContentError
 from .dialogue_notice import NOTICE_FONT, NOTICE_STYLE, NoticeMotion
-from .ui_assets import ImagePack, Raster, UIAssetError
+from .ui_assets import ImagePack, Raster, UIAssetError, read_ui
 
 
 class DialogueRenderer:
@@ -20,7 +21,18 @@ class DialogueRenderer:
 
     @lru_cache(maxsize=8)
     def pack(self, asset_id):
-        return ImagePack.parse(self.resources.read_asset(asset_id))
+        return ImagePack.parse(read_ui(self.resources, asset_id))
+
+    @lru_cache(maxsize=32)
+    def ui_image(self, role):
+        library = getattr(self.resources, 'library', self.resources)
+        if getattr(library, 'kind', 'apk') != 'ipa':
+            return self.image(role)
+        data = read_ui(self.resources, role)
+        if data.startswith((b'\x89PNG', b'\xff\xd8')):
+            return pygame.image.load(BytesIO(data)).convert_alpha()
+        frame = ImagePack.parse(data).images[0]
+        return pygame.image.frombytes(frame.pixels, (frame.width, frame.height), frame.mode).convert_alpha()
 
     @lru_cache(maxsize=64)
     def frame(self, asset_id, index):
@@ -110,14 +122,14 @@ class DialogueRenderer:
         # Indicator parents are siblings of the head's scaled node. They
         # appear after its entrance and do not inherit the head-only flip.
         for pose in motion.relationship.poses():
-            icon = self.image(pose.asset_id)
+            icon = self.ui_image(pose.asset_id)
             if icon is None:
                 continue
             image = pygame.transform.rotozoom(icon, -pose.rotation, 1)
             center = round(cx + pose.x), round(cy + pose.y)
             self.canvas.blit(image, image.get_rect(center=center))
             if pose.flash_alpha:
-                flash = self.image(pose.flash_asset)
+                flash = self.ui_image(pose.flash_asset)
                 if flash is not None:
                     flash = pygame.transform.rotozoom(flash, -pose.rotation, pose.flash_scale)
                     flash.set_alpha(pose.flash_alpha)

@@ -1,6 +1,6 @@
 """User-supplied game content, isolated from the distributable runtime.
 
-The APK is opened as data only. No APK code is executed, and ZIP paths are
+The APK or IPA is opened as data only. No native code is executed, and ZIP paths are
 never extracted to the filesystem. Imported files use content-derived names.
 """
 from dataclasses import dataclass
@@ -9,11 +9,13 @@ import hashlib
 import json
 import lzma
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import struct
 import tempfile
 from zipfile import BadZipFile, ZipFile
+from xml.parsers.expat import ExpatError
 
 from .decode.bytecode import decode_program
 
@@ -21,6 +23,7 @@ from .decode.bytecode import decode_program
 PROFILE = 'shs-android-1.0.9'
 NATIVE_MEMBER = 'lib/armeabi/libshs09.so'
 NATIVE_SHA256 = 'b17aa4c71bc46666d414cafae6fac92bbcd755f3dcccd73975cf05f4a119665b'
+IOS_PROFILE = 'shs-ios-assets-v1'
 MAX_PAYLOAD = 64 * 1024 * 1024
 
 
@@ -33,7 +36,7 @@ def digest(data: bytes) -> str:
 
 
 def is_bundled(record: dict) -> bool:
-    return 'apk_member' in record or record.get('builtin') == 'football-star'
+    return any(key in record for key in ('apk_member', 'ipa_member')) or record.get('builtin') == 'football-star'
 
 
 def file_digest(path: Path) -> str:
@@ -152,15 +155,16 @@ class ExpArchive:
 
 
 def _zip_read(apk: ZipFile, name: str) -> bytes:
+    kind = 'IPA' if str(apk.filename).lower().endswith('.ipa') else 'APK'
     try:
         info = apk.getinfo(name)
         if info.file_size > MAX_PAYLOAD:
-            raise ContentError(f'APK member exceeds supported size: {name}')
+            raise ContentError(f'{kind} member exceeds supported size: {name}')
         return apk.read(info)
     except KeyError:
-        raise ContentError(f'APK is missing {name}') from None
+        raise ContentError(f'{kind} is missing {name}') from None
     except (BadZipFile, RuntimeError, NotImplementedError) as error:
-        raise ContentError(f'Cannot read APK member {name}: {error}') from error
+        raise ContentError(f'Cannot read {kind} member {name}: {error}') from error
 
 
 def _inspect_apk(apk: ZipFile):
@@ -172,6 +176,34 @@ def _inspect_apk(apk: ZipFile):
         raise ContentError(f'Unsupported game APK native library ({actual}); '
                            'the currently supported profile is SHS Android 1.0.9')
     return actual
+
+
+def _inspect_ipa(package: ZipFile):
+    """Identify compatible assets without requiring a particular executable."""
+    names = package.namelist()
+    if len(names) != len(set(names)):
+        raise ContentError('IPA contains ambiguous duplicate member names')
+    plists = [name for name in names if re.fullmatch(r'Payload/[^/]+\.app/Info\.plist', name)]
+    if len(plists) != 1:
+        raise ContentError('IPA must contain exactly one Payload app with Info.plist')
+    root = plists[0].removesuffix('Info.plist')
+    try:
+        info = plistlib.loads(_zip_read(package, plists[0]))
+    except (ValueError, TypeError, OverflowError, ExpatError) as error:
+        raise ContentError('Invalid IPA Info.plist') from error
+    if not isinstance(info, dict):
+        raise ContentError('Invalid IPA Info.plist dictionary')
+    identifier = info.get('CFBundleIdentifier')
+    if (not isinstance(identifier, str)
+            or not re.fullmatch(r'com\.ea\.shs(?:\.[A-Za-z0-9-]+)*', identifier, re.IGNORECASE)):
+        raise ContentError(f'IPA bundle identifier {identifier!r} does not identify SHS (com.ea.shs)')
+    from .ios_assets import validate_assets
+    validate_assets(lambda resource: _zip_read(package, root + 'res_generated/' + str(resource)))
+    # Version fields are informative. Source identity is the complete
+    # archive hash, including repacks or differently encrypted executables.
+    details = {key: info[key] for key in ('CFBundleIdentifier', 'CFBundleShortVersionString', 'CFBundleVersion')
+               if isinstance(info.get(key), str)}
+    return root, details
 
 
 def _episode_inputs(paths):
@@ -209,9 +241,13 @@ def import_game(apk_path: Path, episode_paths: list[Path], destination: Path) ->
     """Create a relocatable library atomically; keep original inputs untouched.
 
     A failed import leaves no partly usable library. Additional episodes are
-    optional because the supplied APK itself includes playable episode data.
+    optional because the supplied APK or IPA includes playable episode data.
+    The historical ``apk_path`` argument also accepts the supported iOS IPA.
     """
     apk_path, destination = Path(apk_path), Path(destination)
+    kind = apk_path.suffix.lower().lstrip('.')
+    if kind not in ('apk', 'ipa'):
+        raise ContentError('Choose an SHS Android 1.0.9 APK or an SHS IPA')
     if destination.exists():
         raise ContentError(f'Library already exists: {destination}; choose a new directory')
     external, catalog = _episode_inputs(episode_paths)
@@ -221,10 +257,10 @@ def import_game(apk_path: Path, episode_paths: list[Path], destination: Path) ->
         (staged / 'content').mkdir(parents=True)
         # Validate the private copy, so source changes during import cannot
         # leave a manifest describing different bytes from those we retain.
-        copied_apk = staged / 'content' / 'input.apk'
+        copied_apk = staged / 'content' / ('input.' + kind)
         shutil.copyfile(apk_path, copied_apk)
         apk_hash = file_digest(copied_apk)
-        final_apk = copied_apk.with_name(apk_hash + '.apk')
+        final_apk = copied_apk.with_name(apk_hash + '.' + kind)
         copied_apk.rename(final_apk)
         records = {}
 
@@ -243,20 +279,25 @@ def import_game(apk_path: Path, episode_paths: list[Path], destination: Path) ->
 
         try:
             with ZipFile(final_apk) as apk:
-                native_hash = _inspect_apk(apk)
+                if kind == 'ipa':
+                    root, app_info = _inspect_ipa(apk)
+                    assets = root + 'res_generated/'
+                else:
+                    native_hash = _inspect_apk(apk)
+                    root = assets = 'assets/Assets/'
                 from .builtin_episode import FOOTBALL_NAME, extract_football, football_source
-                built_in = extract_football(apk)
+                built_in = extract_football(apk, assets, ios=kind == 'ipa')
                 if built_in is not None:
                     sha = digest(built_in)
                     location = dict(file=f'content/{sha}.exp', **football_source())
                     episode_record(built_in, FOOTBALL_NAME, location)
                     (staged / location['file']).write_bytes(built_in)
                 for name in sorted(apk.namelist()):
-                    rest = name.removeprefix('assets/Assets/')
-                    if name.startswith('assets/Assets/') and '/' not in rest and rest.lower().endswith('.exp'):
-                        episode_record(_zip_read(apk, name), rest, dict(apk_member=name))
+                    rest = name.removeprefix(root)
+                    if name.startswith(root) and '/' not in rest and rest.lower().endswith('.exp'):
+                        episode_record(_zip_read(apk, name), rest, {kind + '_member': name})
         except BadZipFile as error:
-            raise ContentError('The supplied APK is not a valid ZIP archive') from error
+            raise ContentError(f'The supplied {kind.upper()} is not a valid ZIP archive') from error
         for path in external:
             data = path.read_bytes()
             sha = digest(data)
@@ -265,9 +306,11 @@ def import_game(apk_path: Path, episode_paths: list[Path], destination: Path) ->
                 (staged / records[sha]['file']).write_bytes(data)
         if not records:
             raise ContentError('No episodes found; supply episode EXP files')
-        manifest = dict(format='shs-content-library', version=1, profile=PROFILE,
-                        apk=dict(file=f'content/{apk_hash}.apk', sha256=apk_hash,
-                                 native_sha256=native_hash), episodes=list(records.values()))
+        manifest = dict(format='shs-content-library', version=2 if kind == 'ipa' else 1,
+                        profile=IOS_PROFILE if kind == 'ipa' else PROFILE,
+                        episodes=list(records.values()))
+        manifest[kind] = dict(file=f'content/{apk_hash}.{kind}', sha256=apk_hash,
+                              **(dict(app=app_info) if kind == 'ipa' else dict(native_sha256=native_hash)))
         if catalog.entries:
             manifest['episode_catalog'] = catalog.to_data()
         (staged / 'library.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
@@ -283,9 +326,14 @@ class ContentLibrary:
         except (OSError, ValueError) as error:
             raise ContentError(f'Cannot open content library: {error}') from error
         m = self.manifest
-        if not isinstance(m, dict) or m.get('format') != 'shs-content-library' or m.get('version') != 1 or m.get('profile') != PROFILE:
+        if (not isinstance(m, dict) or m.get('format') != 'shs-content-library'
+                or (m.get('version'), m.get('profile')) not in ((1, PROFILE), (2, IOS_PROFILE))):
             raise ContentError('Unsupported content library format or game profile')
-        if not isinstance(m.get('apk'), dict) or not isinstance(m.get('episodes'), list) or not m['episodes']:
+        self.profile = m['profile']
+        self.kind = 'ipa' if self.profile == IOS_PROFILE else 'apk'
+        member_key = self.kind + '_member'
+        if (not isinstance(m.get(self.kind), dict) or ('apk' in m and 'ipa' in m)
+                or not isinstance(m.get('episodes'), list) or not m['episodes']):
             raise ContentError('Invalid content library manifest')
         seen = set()
         for record in m['episodes']:
@@ -297,39 +345,55 @@ class ContentLibrary:
                     or not all(isinstance(title, str) for title in record['titles'])
                     or any(type(record.get(key)) is not int or not 0 <= record[key] <= 65535
                            for key in ('pack_id', 'episode_id'))
-                    or ('file' in record) == ('apk_member' in record)
+                    or sum(key in record for key in ('file', 'apk_member', 'ipa_member')) != 1
+                    or ('ipa_member' if self.kind == 'apk' else 'apk_member') in record
                     or ('builtin' in record and (record['builtin'] != 'football-star' or 'file' not in record))
                     or not isinstance(record.get('aliases', []), list)
                     or not all(isinstance(alias, str) for alias in record.get('aliases', []))
-                    or ('apk_member' in record and not isinstance(record['apk_member'], str))):
+                    or (member_key in record and not isinstance(record[member_key], str))):
                 raise ContentError('Invalid episode entry in content library manifest')
             seen.add(record['id'])
         from .episode_catalog import EpisodeCatalog
         self.catalog = EpisodeCatalog.from_data(m.get('episode_catalog', []))
-        path = self._content_file(m['apk'], '.apk')
+        path = self._content_file(m[self.kind], '.' + self.kind)
         try:
-            self.apk = ZipFile(path)
-            if _inspect_apk(self.apk) != m['apk'].get('native_sha256'):
+            self.package = ZipFile(path)
+            # Retain the existing APK API for clients and old test fixtures.
+            self.apk = self.package
+            if self.kind == 'ipa':
+                self.app_root, self.app_info = _inspect_ipa(self.package)
+                self.asset_root = self.app_root + 'res_generated/'
+            else:
+                native_hash = _inspect_apk(self.package)
+                self.app_root = self.asset_root = 'assets/Assets/'
+            if self.kind == 'apk' and native_hash != m[self.kind].get('native_sha256'):
                 raise ContentError('Native profile hash does not match the library manifest')
+            for record in m['episodes']:
+                if member_key in record:
+                    member = record[member_key]
+                    relative = member.removeprefix(self.app_root)
+                    if (not member.startswith(self.app_root) or '/' in relative
+                            or not relative.lower().endswith('.exp')):
+                        raise ContentError('Invalid bundled episode path')
         except (BadZipFile, ContentError) as error:
             if hasattr(self, 'apk'):
                 self.apk.close()
-            raise ContentError(f'Invalid imported APK: {error}') from error
+            raise ContentError(f'Invalid imported {self.kind.upper()}: {error}') from error
         self.episodes = m['episodes']
         self.base_members = {}
         # Only native resource locations participate. UI atlas names such as
         # images/1.png are not aliases of global resource 1.
         for name in self.apk.namelist():
-            relative = name.removeprefix('assets/Assets/')
-            if name.startswith('assets/Assets/') and re.fullmatch(r'(0|[1-9][0-9]*)', relative):
+            relative = name.removeprefix(self.asset_root)
+            if name.startswith(self.asset_root) and re.fullmatch(r'(0|[1-9][0-9]*)', relative):
                 self.base_members[int(relative)] = name
-        for name in self.apk.namelist():
+        for name in self.apk.namelist() if self.kind == 'apk' else ():
             if re.fullmatch(r'assets/Assets/audio/(music/[1-9][0-9]*\.mp3|sfx/[1-9][0-9]*\.wav)', name):
                 stem = Path(name).stem
                 self.base_members.setdefault(int(stem), name)
         # FUN_0004b4fc appends .mp3 to these six resource names. The suffix
         # does not identify an audio stream: resource 16 is an image pack.
-        for resource_id in (16, 290, 446, 496, 499, 502):
+        for resource_id in (16, 290, 446, 496, 499, 502) if self.kind == 'apk' else ():
             name = f'assets/Assets/{resource_id}.mp3'
             if name in self.apk.namelist():
                 self.base_members[resource_id] = name
@@ -360,8 +424,8 @@ class ContentLibrary:
 
     def open_episode(self, selector: str):
         record = self.select(selector)
-        if 'apk_member' in record:
-            data = _zip_read(self.apk, record['apk_member'])
+        if self.kind + '_member' in record:
+            data = _zip_read(self.package, record[self.kind + '_member'])
         else:
             data = self._content_file(record, '.exp').read_bytes()
         if digest(data) != record['sha256']:
@@ -377,14 +441,23 @@ class ContentLibrary:
         if (not isinstance(name, str)
                 or not re.fullmatch(r'(fonts|images)/[A-Za-z0-9_][A-Za-z0-9_.-]*', name)):
             raise ContentError(f'Invalid named UI asset: {name!r}')
-        return _zip_read(self.apk, 'assets/Assets/' + name)
+        if self.kind == 'ipa':
+            raise ContentError(f'IPA has no named UI asset {name}; its text uses installed system fonts')
+        return _zip_read(self.package, self.asset_root + name)
+
+    def read_ui_resource(self, role: int) -> bytes:
+        """Resolve a host UI role without changing script-visible numeric IDs."""
+        if self.kind == 'ipa':
+            from .ios_assets import ui_resource
+            return ui_resource(self, role)
+        return self.read_asset(role)
 
     def read_asset(self, resource_id: int) -> bytes:
-        """The menu reads only the APK bank, without opening an episode."""
+        """Read the base package bank without opening an episode."""
         try:
             return _zip_read(self.apk, self.base_members[resource_id])
         except KeyError:
-            raise ContentError(f'APK resource {resource_id} is missing') from None
+            raise ContentError(f'{self.kind.upper()} resource {resource_id} is missing') from None
 
     def add_episodes(self, paths: list[Path]) -> int:
         """Validate a batch before atomically publishing an expanded manifest.
@@ -398,11 +471,11 @@ class ContentLibrary:
         return self._install_episodes(((path.read_bytes(), path.name, {}) for path in candidates), catalog=catalog)
 
     def ensure_builtin_episodes(self) -> int:
-        """Upgrade an existing library using its retained APK, once per story."""
+        """Upgrade a library using its retained game package, once per story."""
         from .builtin_episode import FOOTBALL_NAME, FOOTBALL_SOURCE, extract_football, football_source
         if any(e.get('builtin') == FOOTBALL_SOURCE for e in self.episodes):
             return 0
-        data = extract_football(self.apk)
+        data = extract_football(self.package, self.asset_root, ios=self.kind == 'ipa')
         if data is None:
             return 0
         return self._install_episodes([(data, FOOTBALL_NAME, football_source())])
@@ -462,8 +535,11 @@ class EpisodeResources:
 
     @property
     def identity(self):
-        return dict(profile=PROFILE, apk_sha256=self.library.manifest['apk']['sha256'],
-                    episode_sha256=self.record['sha256'])
+        return dict(profile=self.library.profile, episode_sha256=self.record['sha256'],
+                    **{self.library.kind + '_sha256': self.library.manifest[self.library.kind]['sha256']})
+
+    def read_ui_resource(self, role: int) -> bytes:
+        return self.library.read_ui_resource(role)
 
     def exists(self, resource_id: int) -> bool:
         # FUN_00082bc0 selects the episode bank at 26000 for art resources.

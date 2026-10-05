@@ -13,7 +13,7 @@ from .football_layout import (FONT, HELP_STYLE, LABEL_STYLE, TITLE_STYLE, clamp,
                               footer_id, heading_id, help_motion, legend_codes,
                               target_position, team_name, yard_glyphs)
 from .menu import MenuStrings
-from .ui_assets import ImagePack, Raster
+from .ui_assets import ImagePack, Raster, read_ui
 
 
 class FootballRenderer:
@@ -23,7 +23,7 @@ class FootballRenderer:
 
     @lru_cache(maxsize=1)
     def atlas(self):
-        return SpriteAtlas.parse(self.resources.read_asset(290))
+        return SpriteAtlas.parse(read_ui(self.resources, 290))
 
     @lru_cache(maxsize=154)
     def frame(self, index):
@@ -32,7 +32,7 @@ class FootballRenderer:
 
     @lru_cache(maxsize=10)
     def image(self, asset):
-        data = self.resources.read_asset(asset)
+        data = read_ui(self.resources, asset)
         if data.startswith((b'\x89PNG', b'\xff\xd8')):
             return pygame.image.load(BytesIO(data)).convert_alpha()
         raster = ImagePack.parse(data).images[0]
@@ -40,13 +40,13 @@ class FootballRenderer:
 
     @lru_cache(maxsize=1)
     def strings(self):
-        return MenuStrings.parse(self.resources.read_asset(13))
+        return MenuStrings.parse(read_ui(self.resources, 13))
 
     @lru_cache(maxsize=1)
     def feedback_font(self):
         # Unlike grid glyph sheets, 540 is a PNG; 541 uses the CS metrics.
         image = self.image(540)
-        return AtlasFont.parse(self.resources.read_asset(541),
+        return AtlasFont.parse(read_ui(self.resources, 541),
                                Raster(*image.get_size(), pygame.image.tobytes(image, 'RGBA')))
 
     @lru_cache(maxsize=128)
@@ -185,10 +185,16 @@ class FootballRenderer:
                     self.blit(self.frame(127), x - 2 - growth * 33, y - 7 - growth * 16.5,
                               scale=growth, scale_y=growth * .5, alpha=alpha)
             if target.phase in (3, 6):
-                # 000c0ac0: 110ms per shadow frame, 1.3 x 1.2 scale.
-                shadow = self.image(720 + (target.elapsed_ms // 110) % 4)
-                alpha = (math.sin(game.visual_ms / 1000 * 4) * .3 + .7) / 1.5
-                self.blit(shadow, x, 600 - y, scale=1.3, scale_y=1.2, alpha=alpha, center=True)
+                alpha = math.sin(game.visual_ms / 1000 * 4) * .3 + .7
+                if getattr(self.resources.library, 'kind', 'apk') == 'ipa':
+                    # ItemSlot::drawSelectionRing (0008efa8): the iOS asset is
+                    # frame 125, rotating at 360 degrees/s then halved in Y.
+                    shadow = pygame.transform.rotate(self.frame(125), -(game.visual_ms * .36 % 360))
+                    self.blit(shadow, x, y, scale_y=.5, alpha=alpha, center=True)
+                else:
+                    # 000c0ac0: 110ms per exported Android shadow frame.
+                    shadow = self.image(720 + (target.elapsed_ms // 110) % 4)
+                    self.blit(shadow, x, 600 - y, scale=1.3, scale_y=1.2, alpha=alpha / 1.5, center=True)
             elif target.phase == 7 and target.elapsed_ms >= 100:
                 progress = (target.elapsed_ms - 100) / 500
                 for growth in (progress, min(1., 1.3 - progress), min(1., 1.5 - progress)):

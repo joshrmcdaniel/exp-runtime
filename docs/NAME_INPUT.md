@@ -4,6 +4,11 @@ Reference: Android 1.0.9 `libshs09.so`. The user reports an identical
 iOS/Android game interface. The renderer reads the player's APK; no original
 artwork, font metrics, screenshots, or native code are distributed.
 
+The Android contract below remains unchanged. IPA playback uses the inspected
+iOS layout-46 panel and Pajama Hip 24 for entered text/cursor, with installed-font
+fallback when necessary. Its UIKit alert uses the desktop message skin. See
+[IPA.md](IPA.md#platform-specific-ui) for evidence and compatibility limits.
+
 ## VM and editing contract
 
 Both services select UI factory type 15. `000d4440` stores the substituted

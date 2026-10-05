@@ -257,7 +257,7 @@ class Application:
 
     def read_folder(self, folder):
         folder = Path(folder).expanduser().resolve()
-        extensions = {'.apk'} if self.browser_kind == 'apk' else {'.exp'} if self.browser_kind == 'episodes' else set()
+        extensions = {'.apk', '.ipa'} if self.browser_kind == 'apk' else {'.exp'} if self.browser_kind == 'episodes' else set()
         files = [p for p in folder.iterdir() if not p.name.startswith('.')
                  and (p.is_dir() or p.suffix.lower() in extensions
                       or (self.browser_kind == 'episodes' and p.name.lower() == 'shs_options.sav'))]
@@ -275,9 +275,9 @@ class Application:
             return
         paths = [Path(p).expanduser() for p in paths]
         if not self.library:
-            apks = [p for p in paths if p.suffix.lower() == '.apk']
+            apks = [p for p in paths if p.suffix.lower() in ('.apk', '.ipa')]
             if len(apks) != 1:
-                raise ContentError('Choose your APK first. You can add episode files afterward.')
+                raise ContentError('Choose one APK or IPA first. You can add episode files afterward.')
             episodes = [p for p in paths if p != apks[0]]
             self.job_kind = 'library'
             self.job = self.executor.submit(import_game, apks[0], episodes, self.directory)
@@ -524,7 +524,7 @@ class Application:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Surviving High School — bring your own APK and episodes')
+    parser = argparse.ArgumentParser(description='Surviving High School — bring your own APK or IPA and episodes')
     parser.add_argument('--library', type=Path, help='Local content library (default: per-user application data)')
     parser.add_argument('--no-audio', action='store_true')
     parser.add_argument('--smoke-test', action='store_true', help=argparse.SUPPRESS)

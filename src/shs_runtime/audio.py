@@ -1,5 +1,7 @@
 """Android 1.0.9 music cues from SHS09SoundEngine.playMusic in classes.dex.
 
+The inspected iOS SHSSoundManager constructor uses the same cue table
+(00074d74..000754ac); see docs/IPA.md for source availability limits.
 Some script IDs name positions within another MP3, not separate assets.
 Resolve them only for music playback; resource lookup and VM IDs stay exact.
 """

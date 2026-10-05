@@ -2,9 +2,11 @@
 
 SHS Runtime provides the compatible engine, KiWi interpreter, local asset
 importer, authored specifications, tests and build tools. Each player supplies
-the original Android 1.0.9 APK and additional episode EXP files. The original
+an original Android 1.0.9 APK or compatible SHS IPA, plus additional episode EXP files. The original
 ARM executable is inspected only to identify the supported APK profile; it is
-not executed by the runtime.
+not executed by the runtime. IPA import identifies SHS by bundle identifier
+and validates its required assets, independently of the version number.
+Its system-font fallback and current limits are in [IPA.md](IPA.md).
 
 ## Downloads built by GitHub Actions
 
@@ -63,9 +65,9 @@ are inside `dist/desktop/SHS Runtime/`; keep that complete directory together.
 Build on the target operating system. CI adds startup checks for all four
 download targets; complete gameplay still needs validation on each platform.
 
-The build bundles Python and the runtime dependencies. No APK, EXPs, Ghidra,
+The build bundles Python and the runtime dependencies. No APK, IPA, EXPs, Ghidra,
 Ren'Py SDK, extracted resources or old checkout are required to build it.
-On first launch, choose your APK and add episode files through the menu.
+On first launch, choose your APK or IPA and add episode files through the menu.
 Extraction happens locally; the application has no game download service.
 
 To run from source instead:
@@ -86,7 +88,7 @@ This standalone directory was assembled from authored source and documents.
 It includes no Git history from the research project. Git initialization,
 remotes, commits and publication are left to the project owner.
 
-Keep APKs, EXPs, extracted images/audio/fonts/scripts, original screenshots,
+Keep APKs, IPAs, extracted images/audio/fonts/scripts, original screenshots,
 native decompilations, generated games, runtime libraries and player saves
 outside the public tree. Optional original-content tests read local inputs
 and skip when those inputs are absent; ordinary tests use synthetic fixtures.

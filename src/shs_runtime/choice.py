@@ -8,8 +8,8 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 import math
 
-from .fonts import BitmapFont, TextLayout, TextStyle, layout_text
-from .ui_assets import LayoutBank, Rect
+from .fonts import load_font, TextLayout, TextStyle, layout_text
+from .ui_assets import LayoutBank, Rect, read_ui
 
 
 BODY_FONT = 'ArialRoundedMTBold16'
@@ -44,11 +44,11 @@ class ChoicePage:
 class ChoiceLayout:
     def __init__(self, resources):
         self.resources = resources
-        self.bank = LayoutBank.parse(resources.read_asset(14))
+        self.bank = LayoutBank.parse(read_ui(resources, 14))
 
     @lru_cache(maxsize=8)
     def font(self, name):
-        return BitmapFont.parse(self.resources.library.read_ui_asset(f'fonts/{name}.fnt'))
+        return load_font(self.resources.library, name)
 
     def page(self, details, *, theme=1, has_portrait=False):
         minigame = details.get('minigame', False)

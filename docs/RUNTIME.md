@@ -1,6 +1,6 @@
 # Compatible runtime and user content
 
-Revision: 2026-09-15. This is an experimental implementation of the SHS engine.
+Revision: 2026-10-04. This is an experimental implementation of the SHS engine.
 It executes original KiWi instructions and reuses original assets. It currently
 plays the opening of **The New Girl**, including real branching choices and its
 first mini game, and implements timed words, word/picture grids and football; it
@@ -22,7 +22,8 @@ Mini games reuse the original APK art with recovered input/scoring contracts;
 their remaining presentation differences are in [MINIGAMES.md](MINIGAMES.md).
 Episode introductions and week cards now use their original background,
 external glyph fonts, placement, entrance and acknowledgement gate; see
-[TITLE_SCREENS.md](TITLE_SCREENS.md). Text entry retains a prototype layout.
+[TITLE_SCREENS.md](TITLE_SCREENS.md). Name entry uses recovered native layouts;
+see [NAME_INPUT.md](NAME_INPUT.md).
 
 The user reports that the iOS and Android interfaces were identical. The
 available **Android 1.0.9 executable and APK assets** are therefore the working
@@ -31,6 +32,8 @@ calculations and shipped glyph/art data take priority over estimates from the
 prototype. Newly discovered platform differences must remain explicit; shared
 appearance does not establish identical engine internals or platform services.
 The current concrete asset/code evidence is in [UI_FIDELITY.md](UI_FIDELITY.md).
+IPA asset import and the inspected iOS differences are documented in
+[IPA.md](IPA.md), including system-font fallback and its fidelity limits.
 
 Implement fidelity in this order:
 
@@ -62,9 +65,9 @@ and the corresponding comparison passes.
 
 ## Distribution model
 
-Each player supplies their own **SHS Android 1.0.9 APK** and any additional
-**episode EXP files**. The APK provides the base resource bank, audio, and
-three bundled episodes. Additional episode files remain necessary for their
+Each player supplies their own **SHS Android 1.0.9 APK** or **compatible SHS IPA**
+and any additional **episode EXP files**. The package provides the base resource
+bank, available audio, and bundled stories. Additional episode files remain necessary for their
 respective stories. There are no game downloads or dependencies on this
 repository's extracted assets, Ren'Py projects, Ghidra installation, or original
 directory layout.
@@ -73,11 +76,13 @@ The reusable program ships separately from that content. This is the same
 user-supplied-content model discussed for game recompilation projects; this
 implementation is a **compatible engine with a KiWi interpreter**, rather
 than a static recompilation of the ARM executable. APK native code is used
-only to identify the supported profile; it is never executed.
+only to identify the supported Android profile. IPA import uses the SHS bundle
+identifier and required assets, with informational version/build metadata.
+Neither package's native code is executed.
 
 `MANIFEST.in` explicitly selects runtime source and authored documentation for
 the source distribution. Setuptools package discovery is restricted to
-`src/shs_runtime`. Original APKs/EXPs, extracted art/audio, decompiled native C,
+`src/shs_runtime`. Original APKs/IPAs/EXPs, extracted art/audio, decompiled native C,
 generated Ren'Py games, and saved progress are excluded from Python packages
 and executable builds. Players can clone the engine's source and build their
 own executable before supplying any game content. See
@@ -95,9 +100,9 @@ uv run --locked --extra desktop shs
 ```
 
 `shs` (or `shs-tool play` without `--episode`) opens the main menu and, on first
-launch, a file picker for the player's APK. Options accepts additional episode
+launch, a file picker for the player's APK or IPA. Options accepts additional episode
 files or folders. Drag-and-drop also works, including multiple files together.
-The original menu art/fonts come from the APK. See [MAIN_MENU.md](MAIN_MENU.md)
+The original menu art/glyphs come from the supplied package. See [MAIN_MENU.md](MAIN_MENU.md)
 for recovered native state/asset contracts, desktop adaptations and executable
 build instructions.
 
@@ -109,15 +114,19 @@ uv run --locked shs-tool list --library /path/to/my-shs-library
 uv run --locked --extra desktop shs-tool play --library /path/to/my-shs-library --episode "The_New_Girl.exp"
 ```
 
+For an IPA, replace `--apk /path/to/game.apk` with `--ipa /path/to/game.ipa`.
+Only one base package is used per library.
+
 Without uv, install with `python -m pip install -e '.[desktop]'`, then use
 `shs-tool` from that environment. Decoder/headless tools do not require pygame.
 
 `--episodes` accepts multiple files or directories and recursively finds EXP
 files, including uppercase `.EXP`. It is optional when using only the episodes
-inside the supplied APK. Import creates a **new** library directory; it refuses
+inside the supplied APK or IPA. Import creates a **new** library directory; it refuses
 to overwrite an existing library. Add more episodes through the app's Options
 screen; the batch is validated before updating the manifest. Saves can be copied
-between libraries with identical content hashes. Imports preserve supplied files.
+between libraries with identical content hashes. IPA dialogue checkpoints also
+require matching font metrics; see [IPA fonts](IPA.md#fonts). Imports preserve supplied files.
 
 Import/list default to `.shs-library` in the current working directory. The
 player uses an existing local library in a source checkout, otherwise per-user
@@ -152,19 +161,22 @@ saves are not supported.
 | Escape | Open/close the pause menu during play; go back within application menus |
 | Main Menu / Close window | Save a separate automatic checkpoint and return to the menu / exit |
 
-## Content library contract, version 1
+## Content library contract
 
 ```text
 library/
   library.json
-  content/<APK SHA-256>.apk
-  content/<EXP SHA-256>.exp       # external episodes only
+  content/<package SHA-256>.apk  # or .ipa
+  content/<EXP SHA-256>.exp       # external episodes and extracted Football Star
   saves/<EXP SHA-256>.shs-save.json
 ```
 
-The manifest has `format: "shs-content-library"`, `version: 1`, and
+Android manifests have `format: "shs-content-library"`, `version: 1`, and
 `profile: "shs-android-1.0.9"`. `apk` contains `file`, `sha256`, and
-`native_sha256`. Each `episodes` entry contains:
+`native_sha256`. IPA manifests use `version: 2`, `profile: "shs-ios-assets-v1"`,
+and `ipa` containing `file`, `sha256`, and informational `app` plist metadata.
+They do not contain an `apk` record or require a native executable hash.
+Each `episodes` entry contains:
 
 | Field | Type / meaning |
 | --- | --- |
@@ -173,10 +185,10 @@ The manifest has `format: "shs-content-library"`, `version: 1`, and
 | `pack_id`, `episode_id` | Unsigned metadata words |
 | `titles` | Five UTF-8 localized metadata strings, in archive order |
 | `scripts` | Sorted exact resource IDs containing KiWi programs |
-| `file` **or** `apk_member` | Copied EXP path or member inside the copied APK |
+| Exactly one of `file`, `apk_member`, `ipa_member` | Copied EXP path or member inside the matching base package |
 
 Duplicate EXP bytes produce one entry, even when supplied under different
-names or also present inside the APK. Metadata IDs alone are not unique content
+names or also present inside the package. Metadata IDs alone are not unique content
 identities. All filesystem paths in the manifest are relative, content-derived
 paths, so the entire library can be moved to another directory or computer.
 
@@ -187,22 +199,27 @@ discover this optional sidecar; users can also add it through the episode
 picker. The native envelope, normalized metadata schema, matching and fallback
 rules are in [EPISODE_CATALOG.md](EPISODE_CATALOG.md).
 
-Import validates a private copy of the APK, decodes all imported EXP payloads,
+Import validates a private copy of the APK or IPA, decodes all imported EXP payloads,
 and parses their KiWi programs before publishing the library by directory
 rename. A failed import leaves no partially initialized destination. ZIP paths
-are never extracted. Import checks duplicate ZIP member names and rejects an
-unknown native profile. The supported member is `lib/armeabi/libshs09.so`, with
+are never extracted. Import checks duplicate ZIP member names. Android import
+rejects an unknown native profile; its supported member is `lib/armeabi/libshs09.so`, with
 SHA-256:
 
 ```text
 b17aa4c71bc46666d414cafae6fac92bbcd755f3dcccd73975cf05f4a119665b
 ```
 
-The APK file hash is checked when opening the library; the selected EXP hash
+IPA import instead checks its bundle identifier, app root, and the required UI
+asset contract described in [IPA.md](IPA.md#identification-and-compatibility).
+It accepts compatible assets independently of the package's version number.
+
+The complete APK/IPA hash is checked when opening the library; the selected EXP hash
 is checked when opening its episode. The native-library hash identifies the
-engine profile, whereas the **complete APK and EXP hashes** identify save
-compatibility. A differently repacked APK with the same native binary may
-import but has a different save identity.
+Android engine profile, whereas the **profile and complete package/EXP hashes**
+identify save content compatibility. A differently repacked package may import
+but has a different save identity. IPA saves use `ipa_sha256` in place of
+`apk_sha256`; the JSON save version does not change.
 
 The runtime's strict EXP reader follows [SCHEMA.md](SCHEMA.md): BE outer
 fields, the LE LZMA wrapper, aliases, and five UTF-8 titles. It rejects partial
@@ -222,6 +239,7 @@ fallback and EXPD variants remain unsupported.
 | `engine.py` | Native host services and persistent game/panel state |
 | `runtime.py` | Input callbacks, scene scheduling, timers, save/load |
 | `fonts.py` | Original descriptor records, native text metrics, wrapping, color controls |
+| `ios_assets.py`, `ios_fonts.py` | Validated IPA UI roles and installed-font rendering/fallback |
 | `ui_assets.py` | Native layout records, ARGB/alpha image packs, transforms and masks |
 | `atlas.py` | ABGR sprite atlases, signed composites and binary glyph-font records |
 | `minigames.py`, `word_grid.py`, `football.py` | Game rules, random streams, input phases, scoring and clocks |
@@ -230,7 +248,7 @@ fallback and EXPD variants remain unsupported.
 | `desktop_text.py` | Original atlas drawing for dialogue; font/layout/glyph caches |
 | `desktop_dialogue.py` | Original dialogue artwork and portrait composition |
 | `desktop.py` | pygame input, presentation, images, and basic audio |
-| `audio.py` | Android music-cue redirects and millisecond start offsets; separate from exact resource lookup |
+| `audio.py` | Verified Android/iOS music-cue redirects and millisecond start offsets; separate from exact resource lookup |
 | `menu.py`, `desktop_menu.py` | Native menu geometry, string/glyph resources, menu UI, local preferences/checkpoints |
 | `application.py` | Setup/import, menu navigation, session lifecycle, worker/event loop and exit |
 
@@ -239,14 +257,17 @@ index; the runtime performs the recovered callback, and the VM executes the
 resulting branch. A renderer does not select scene links or interpret nearby
 numbers as dialogue.
 
-Native image-bank selection (`FUN_00082bc0`) uses the APK bank for resource IDs
-below 26000 and the selected EXP bank for IDs at least 26000. APK numeric files
+Native image-bank selection (`FUN_00082bc0`, iOS `0003dd60`) uses the base bank for
+resource IDs below 26000 and the selected EXP bank for IDs at least 26000. APK numeric files
 live directly under `assets/Assets/`; six native IDs have a `.mp3` suffix,
 including image pack 16. The audio subdirectories have explicit
 numeric filenames. Font/image/animation atlas filenames in other subdirectories
 are separate namespaces, so `images/1.png` never replaces global resource 1.
 An absent episode resource does not silently fall back to an unrelated APK ID.
-Named UI resources are read explicitly with `ContentLibrary.read_ui_asset()`.
+Named Android UI resources are read explicitly with `ContentLibrary.read_ui_asset()`.
+IPA numeric files live in `Payload/<app>.app/res_generated/` without suffixes.
+Host UI roles use `read_ui_resource()` to select the matching platform assets;
+this never remaps script-visible `read_asset()` calls.
 Music playback separately applies eleven verified Java sound-engine redirects:
 for example, cue 8202 plays APK track 8201 starting at 2800 ms. The requested
 ID remains in engine/save state, and generic resource reads stay exact. These
@@ -254,7 +275,9 @@ cues use the APK already in the library; no additional download or import is
 needed. See [Android music cues](ENGINE_ABI.md#android-music-cues).
 Font atlases are read directly from the imported APK, including `.dat` files
 that contain PNG data. Neither original font tables nor images ship with the
-runtime; no system-font installation is needed for the recovered dialogue path.
+runtime; no system-font installation is needed for Android dialogue. IPA text
+uses its bundled or installed original faces, then the system default if absent.
+Its font rendering and missing audio limits are in [IPA.md](IPA.md).
 
 Script loading follows a different path: the selected episode's exact script
 IDs take priority, including its scripts in the 25000 range. Playback starts at
@@ -589,7 +612,7 @@ and is not included in this standalone runtime.
 
 ## Built-in Football Star extraction
 
-The importer extracts the 22 loose APK scripts into a deterministic local EXP with native IDs 25001–25021 and 25023. Its five titles come from string-bank 13, entries 193–197; pack/episode IDs are 0/0. Shared art/audio remain in the APK bank. Startup upgrades existing libraries atomically and preserves their episodes, preferences and saves. See [MAIN_MENU.md](MAIN_MENU.md#built-in-story-extraction).
+The importer extracts the 22 loose APK scripts into a deterministic local EXP with native IDs 25001–25021 and 25023. Its five titles come from string-bank 13, entries 193–197; pack/episode IDs are 0/0. IPA extraction uses its 21 scripts at 25001–25021 and string-bank 12. Shared art/audio remain in the base package bank. Startup upgrades existing libraries atomically and preserves their episodes, preferences and saves. See [MAIN_MENU.md](MAIN_MENU.md#built-in-story-extraction) and [IPA.md](IPA.md).
 
 The opening has been exercised through character creation, the first classes,
 service 91 in scene 25006 at PC 1245, and the following football mini game at
