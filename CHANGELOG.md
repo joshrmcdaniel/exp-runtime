@@ -1,14 +1,6 @@
 # Changelog
 
 User-visible changes are recorded here. Changes awaiting a versioned release
-are listed under Unreleased.
-
-## Unreleased
-
-### Added
-
-- A kiwi fruit app logo, drawn as an SVG and shown in the game chooser and
-  window icon. Desktop builds generate macOS and Windows app icons from it.
 
 ## v0.3.0
 
