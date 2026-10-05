@@ -17,6 +17,7 @@ import pygame
 from .content import ContentError, ContentLibrary, import_game, is_bundled
 from .desktop import Desktop, SIZE
 from .desktop_menu import MenuRenderer
+from .languages import TITLE_LANGUAGES
 from .menu import (EPISODE_HEADER_HEIGHT, EPISODE_ROW_HEIGHT, MenuState,
                    default_library, group_episodes, remember_library)
 from .runtime import SaveError, Session
@@ -127,11 +128,12 @@ class Application:
             query = self.query.casefold()
             matching_groups = {e['id'] for section in self._episode_sections(records)
                                if query in section.title.casefold() for e in section.episodes}
-            records = [e for e in records if query in e['titles'][0].casefold() or query in e['name'].casefold()
+            records = [e for e in records if any(query in title.casefold() for title in e['titles'])
+                       or query in e['name'].casefold()
                        or any(query in alias.casefold() for alias in e.get('aliases', []))
                        or e['id'] in matching_groups]
         def key(record):
-            title = record['titles'][0].casefold()
+            title = self.state.title(record).casefold()
             identity = record['pack_id'], record['episode_id']
             # Distinct versions retain their content identity; bundle first
             # when their numeric IDs and titles coincide.
@@ -213,7 +215,10 @@ class Application:
                 session = self.state.session(episode, resume=resume)
             # A fresh renderer per episode prevents local image IDs from
             # accidentally reusing the previous episode's cached artwork.
-            self.game = Desktop(session, audio=self.audio, window=self.window, on_main_menu=self.return_to_menu)
+            self.game = Desktop(session, audio=self.audio, window=self.window, on_main_menu=self.return_to_menu,
+                                episode_title=self.state.title(session.resources.record))
+        self.game.episode_title = self.state.title(self.game.session.resources.record)
+        pygame.display.set_caption('Surviving High School — ' + self.game.episode_title)
         self.game.music_enabled, self.game.sound_enabled = self.state.music, self.state.sound
         self.game.active = self.active
         self.screen, self.history, self.focus = 'game', [], None
@@ -321,8 +326,20 @@ class Application:
             elif kind == 'episode':
                 self.selected = command[1]
                 self.show('episode')
-            elif kind in ('options', 'help', 'library', 'restart'):
+            elif kind in ('options', 'help', 'library', 'restart', 'title_languages'):
                 self.show(kind)
+            elif kind == 'title_language':
+                language = command[1]
+                if language not in TITLE_LANGUAGES:
+                    raise ValueError('Unsupported episode title language')
+                previous = self.state.title_language
+                self.state.title_language = language
+                try:
+                    self.state.persist()
+                except OSError:
+                    self.state.title_language = previous
+                    raise
+                self.episode_scroll = self.scroll = 0
             elif kind == 'start':
                 self.start(resume=command[1])
             elif kind == 'legacy':

@@ -14,6 +14,13 @@ and no original artwork, fonts, scripts or executable is distributed with the
 engine. This adds an asset source to the desktop player; it does not build an
 iOS application or execute the original Mach-O binary.
 
+Episode title language can be selected in Options. The supplied IPA has one
+English game string bank and no alternate translated story scripts were found.
+Its root `Localizable.strings` translates an EA Mobile promotional message
+into seven languages, not story or menu text. See the
+[localization inspection](MAIN_MENU.md#episode-title-languages) for native
+addresses and the title-selection limits.
+
 ## Optional APK music
 
 Some original iOS music was downloaded separately and is absent from the IPA.

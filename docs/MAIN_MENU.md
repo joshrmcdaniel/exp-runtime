@@ -26,7 +26,7 @@ yield IDs and must never be fed into the engine-service dispatcher.
 | 10004 | NowAiring | 127 | Locally imported episode list |
 | 10003 | OnDemand | 91 | All local episodes |
 | 10005 | MoreGames | 252 or 253, depending on ad state | Explain local-content workflow; no store request |
-| 1006 | Options | Gear artwork | Music/Sound toggles and library controls |
+| 1006 | Options | Gear artwork | Music/Sound, episode title language and library controls |
 | 10007 | Help/About | Info artwork | Player controls and reconstruction status |
 | 10008 | DisableAds | 300 | Omitted; no advertising or purchase system |
 
@@ -97,6 +97,44 @@ use numeric pack headers. Matching titles distinguish bundled and imported
 versions rather than merging different EXP hashes. The complete catalog schema,
 native evidence, import behavior and desktop adaptations are documented in
 [EPISODE_CATALOG.md](EPISODE_CATALOG.md).
+
+### Episode title languages
+
+Options exposes the five EXP metadata slots in their observed order: English,
+French, Italian, German and Spanish (`en`, `fr`, `it`, `de`, `es`). The language
+names are read from original menu strings 118–122. The preference changes list
+rows, episode detail titles, desktop captions and By Title ordering. Search
+and exact episode selectors accept all five supplied titles; ambiguous matches
+still require an ID. Empty/whitespace translations fall back to the English
+title, then the filename if English is empty too. Repeated English titles are
+displayed as supplied. Catalog grouping and content identity retain their
+original keys.
+
+This is a desktop metadata preference, not a recovered dialogue-language
+switch. Inspection of the supplied Android 1.0.9 APK and iOS 1.4.2 IPA found
+one 303-entry UI string bank in each (13 and 12, respectively), and no alternate
+translated scene scripts. iOS `SHSEngine::getLanguageIndex` (`0003dd48`)
+returns 0; `getLanguageCode` (`0003dd50`) returns English. `loadLanguageCSL`
+(`0003a074`) loads resource 12, and `CSLocalizer::loadCSL` (`00013350`) reads
+a single offset/string table. The language labels and some multilingual art
+do not establish that a complete translation is present. Service 70 and script
+resource IDs retain their verified contracts.
+
+The extracted APK's 2,840-byte `resources.arsc` has no locale-specific resource
+configurations; its string values are English launcher/connection labels.
+The IPA root `Localizable.strings` is a binary plist with seven
+`default_ticket_string_*` entries: EA Mobile promotional text in English,
+French, Italian, German, Spanish, Korean and Chinese. It supplies no story or
+game-menu translations. These observations apply to the inspected files, not
+every historical regional build.
+
+Android's supplied bitmap fonts have no accented glyphs. Menu labels which
+need them use the installed Arial Rounded MT Bold face, then pygame's default
+font when absent. Other menu labels retain their original bitmap metrics;
+IPA's existing original-font lookup remains first. This fallback is confined
+to desktop menu text. Story font/layout validation and save version 13 are
+unchanged. Choosing a title language preserves live sessions and existing
+manual/automatic checkpoints.
 
 ## 3. Additional resource schemas
 
@@ -195,7 +233,7 @@ and reports the write error. See the [exit contract](STORY_SERVICES.md#episode-e
 
 | File, relative to the library | Schema / behavior |
 | --- | --- |
-| `player.json` | `{version:1, selected:SHA256, music:bool, sound:bool, order:"episode"\|"title"}`; old files default to episode order |
+| `player.json` | `{version:1, selected:SHA256, music:bool, sound:bool, order:"episode"\|"title", title_language:"en"\|"fr"\|"it"\|"de"\|"es"}`; old files default to episode order and English titles |
 | `saves/<episode-sha>.shs-save.json` | Existing manual F5/F9 slot, [runtime save schema](RUNTIME.md#runtime-save-schema-version-13) |
 | `saves/<episode-sha>.shs-auto.json` | Automatic checkpoint on menu return and application exit, same schema |
 
@@ -260,7 +298,7 @@ yet established. Known adaptations and gaps:
 
 - Local episode lists, search, setup, file picker, help content and library
   controls replace server/purchase/platform flows.
-- Options implements audio and content management, not all original native
+- Options implements audio, episode title language and content management, not all original native
   settings. Original episode preview/download details are not reconstructed.
 - Entrance models the one-second photo scale, title at 1.1s, menu backdrop at
   1.6s, and staggered 250/500/750/1000ms buttons starting at 2s. Native

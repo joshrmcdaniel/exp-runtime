@@ -162,6 +162,7 @@ class MusicPlaybackTests(unittest.TestCase):
         app.game, app.selected, app.audio, app.active = ui, resources.record['id'], True, True
         app.window = ui.window
         app.state = Mock(music=True, sound=True)
+        app.state.title.return_value = resources.record['titles'][0]
         app.show, app.refresh_saves = Mock(), Mock()
         saved = ui.session.snapshot()
         with patch('pygame.mixer.music') as music, patch('pygame.mixer.stop'):

@@ -41,6 +41,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     list_parser = subparsers.add_parser("list", help="List episodes in a local content library.")
     list_parser.add_argument("--library", type=Path, default=Path(".shs-library"))
+    from .languages import TITLE_LANGUAGES
+    list_parser.add_argument('--title-language', choices=TITLE_LANGUAGES,
+                             help='Episode title language; defaults to the library preference. Does not translate story text.')
 
     music_parser = subparsers.add_parser("add-music", help="Add missing music to an existing IPA library.")
     music_parser.add_argument("--apk", type=Path, required=True, help="Your SHS Android 1.0.9 APK.")
@@ -110,8 +113,12 @@ def main(argv: list[str] | None = None) -> None:
                     return
                 library.ensure_builtin_episodes()
                 if args.command == "list":
+                    from .menu import MenuState
+                    state = MenuState(library)
+                    if args.title_language is not None:
+                        state.title_language = args.title_language
                     for record in library.episodes:
-                        print(f"{record['id'][:12]}  {record['titles'][0]}  ({record['name']})")
+                        print(f"{record['id'][:12]}  {state.title(record)}  ({record['name']})")
                     return
         except (ContentError, SaveError, VMError, OSError) as error:
             parser.error(str(error))

@@ -71,6 +71,11 @@ separately. IPA artwork and installed original fonts keep priority, and your
 IPA saves remain compatible. See [IPA import](docs/IPA.md#optional-apk-music)
 for command-line options and supported assets.
 
+**Options → Episode title language** selects English, French, Italian, German
+or Spanish names where the EXP includes them. Story text remains in the
+language supplied by each episode; the inspected APK/IPA contain English
+stories, not five dialogue translations. Existing progress stays compatible.
+
 > Store the episodes within a folder
 >
 > Example:

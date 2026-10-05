@@ -10,6 +10,7 @@ from .content import is_bundled
 from .desktop_dialogue import DialogueRenderer
 from .desktop_text import BitmapTextRenderer
 from .fonts import TextStyle
+from .languages import TITLE_LANGUAGES
 from .menu import MenuFont, MenuStrings, main_button_rects
 from .ui_assets import ImagePack, LayoutBank, Rect, read_ui
 
@@ -58,13 +59,20 @@ class MenuRenderer:
         rect = pygame.Rect(rect)
         clip = self.canvas.get_clip()
         self.canvas.set_clip(rect.clip(clip))
+        native = False
         if self.library:
             name = 'PajamaHip26' if title else 'ArialRoundedMTBold16'
+            font = self.text.font(name)
+            native = all(c == '\n' or ord(c) in font.glyphs for c in text)
+        if native:
             layout = self.text.layout(name, text, rect.width, TextStyle(size, 3, color))
             x = rect.x + (rect.width - layout.width) / 2 if center else rect.x
             self.text.draw_layout(self.canvas, name, layout, x, rect.y)
         else:
-            font = self.small if size < 14 else self.fallback
+            # Desktop metadata is UTF-8, but Android's supplied bitmap fonts
+            # only cover ASCII. Keep translated titles/language names intact;
+            # this menu-only fallback never changes story layout or saves.
+            font = self.unicode_font(size) if self.library else self.small if size < 14 else self.fallback
             y, line = rect.y, ''
             for word in (text + ' \n').split(' '):
                 if word == '\n' or (line and font.size(line + word)[0] > rect.width):
@@ -75,11 +83,18 @@ class MenuRenderer:
                 line += word + ' '
         self.canvas.set_clip(clip)
 
-    def button(self, label, rect, command, *, pressed=None, enabled=True):
+    @lru_cache(maxsize=8)
+    def unicode_font(self, size):
+        # Prefer the original installed UI face; pygame supplies its default
+        # when the system has no matching font. No font data are imported.
+        path = pygame.font.match_font('Arial Rounded MT Bold,Arial Rounded', bold=True)
+        return pygame.font.Font(path, round(size))
+
+    def button(self, label, rect, command, *, pressed=None, enabled=True, selected=False):
         rect = pygame.Rect(rect)
         if self.library:
             # Native list buttons: layouts 70/71 (blue), 72/73 (orange).
-            layout = 71 if pressed == command else 70
+            layout = (72 if selected else 70) + int(pressed == command)
             self.layout(layout, Rect(*rect))
         else:
             pygame.draw.rect(self.canvas, (223, 230, 238) if pressed != command else (185, 204, 227), rect, border_radius=5)
@@ -181,7 +196,7 @@ class MenuRenderer:
                         (196, 113, 105, 29), ('order',), pressed=app.pressed)
             clip = pygame.Rect(9, 150, 302, 252)
             self.canvas.set_clip(clip)
-            duplicates = Counter(e['titles'][0] for e in app.library.episodes)
+            duplicates = Counter(app.state.title(e) for e in app.library.episodes)
             rows, total = app.episode_rows()
             app.scroll = min(app.scroll, max(0, total - clip.height))
             index = 0
@@ -215,8 +230,9 @@ class MenuRenderer:
                 selected = app.pressed == ('episode', record['id'])
                 image = self.art.frame(16, 84 if selected else 83 if index % 2 == 0 else 82)
                 self.canvas.blit(image, rect)
-                duplicate = duplicates[record['titles'][0]] > 1
-                self.label(record['titles'][0], (27, y + (2 if duplicate else 7), 224, 21 if duplicate else 31), size=14)
+                title = app.state.title(record)
+                duplicate = duplicates[title] > 1
+                self.label(title, (27, y + (2 if duplicate else 7), 224, 21 if duplicate else 31), size=14)
                 if duplicate:
                     self.label('Bundled version' if is_bundled(record) else 'Imported version',
                                (27, y + 25, 224, 16), size=11, color=GRAY)
@@ -248,7 +264,7 @@ class MenuRenderer:
         elif screen in ('episode', 'restart'):
             record = app.library.select(app.selected)
             self.panel('Restart Episode?' if screen == 'restart' else 'Play Episode')
-            self.label(record['titles'][0], (29, 127, 262, 80), size=22, center=True)
+            self.label(app.state.title(record), (29, 127, 262, 80), size=22, center=True)
             if screen == 'restart':
                 self.label('Start from the beginning? Your next automatic checkpoint will replace the previous one. Manual saves are kept.',
                            (30, 224, 260, 110), color=GRAY)
@@ -262,11 +278,23 @@ class MenuRenderer:
                     self.button('New Game', (83, 350, 154, 33), ('restart',))
         elif screen == 'options':
             self.panel('Options')
-            for y, label, value, setting in ((132, 'Music', app.state.music, 'music'), (194, 'Sound', app.state.sound, 'sound')):
+            for y, label, value, setting in ((124, 'Music', app.state.music, 'music'), (177, 'Sound', app.state.sound, 'sound')):
                 self.label(label, (31, y + 5, 147, 30), size=20)
                 self.button('On' if value else 'Off', (213, y, 78, 29), ('toggle', setting))
-            self.button('Add Episodes', (30, 271, 260, 34), ('browse', 'episodes'))
-            self.button('Content Library', (30, 329, 260, 34), ('library',))
+            self.label('Episode title language', (31, 226, 258, 25))
+            language = self.strings[118 + TITLE_LANGUAGES.index(app.state.title_language)]
+            self.button(language, (30, 253, 260, 32), ('title_languages',))
+            self.button('Add Episodes', (30, 305, 260, 34), ('browse', 'episodes'))
+            self.button('Content Library', (30, 357, 260, 34), ('library',))
+        elif screen == 'title_languages':
+            self.panel('Episode Titles')
+            self.label('Choose episode names where translations are available. Story text stays in the language of each supplied episode.',
+                       (30, 120, 260, 80), color=GRAY)
+            for index, language in enumerate(TITLE_LANGUAGES):
+                selected = language == app.state.title_language
+                label = self.strings[118 + index] + (' (selected)' if selected else '')
+                self.button(label, (30, 210 + index * 39, 260, 32), ('title_language', language),
+                            pressed=app.pressed, selected=selected)
         elif screen == 'library':
             self.panel('Content Library')
             self.label(f'{len(app.library.episodes)} imported episodes', (29, 129, 262, 45), size=20)

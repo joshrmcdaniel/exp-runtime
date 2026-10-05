@@ -183,7 +183,8 @@ The first string length is at byte 4. Subsequent lengths follow the preceding st
 
 All 1,370 titles are valid UTF-8, contain no NUL bytes, and consume their payloads exactly. Native general string reader `FUN_0004b138` also decodes UTF-8 sequences into its byte-string representation; its limited character conversion is not a Latin-1 wire encoding. The exact caller selecting an episode's locale remains unresolved.
 
-The language order is **inferred from translated title content**:
+The language order is **inferred from translated title content**, corroborated
+by the same order in native menu strings 118–122:
 
 | Index | Language | Example from `10_The_Wrong_Side_of_Town.exp` |
 | --- | --- | --- |
@@ -192,6 +193,10 @@ The language order is **inferred from translated title content**:
 | 2 | Italian | `10: Il quartiere sbagliato` |
 | 3 | German | `10. Falsches Ende der Stadt` |
 | 4 | Spanish | `10: La zona chunga` |
+
+These are title translations, not a directory of translated scene scripts.
+The desktop can select a title slot independently of gameplay; see
+[title-language behavior and package inspection](MAIN_MENU.md#episode-title-languages).
 
 The old schema's `description` was the French title. Repeated English titles obscured the distinction. `pack_id` and `episode_id` are retained descriptive names. Native menu categories are separate strings supplied by the download catalog and retained in `shs_options.sav`; they cannot be inferred universally from these two IDs. See [the catalog schema](EPISODE_CATALOG.md) for the recovered record and grouping rules. Complete download-version semantics remain unresolved.
 

@@ -7,6 +7,11 @@ are listed under Unreleased.
 
 ### Added
 
+- Choose English, French, Italian, German or Spanish episode titles in Options.
+  The preference applies to episode lists, title sorting and desktop captions;
+  search and episode selectors accept all supplied titles. Missing translations
+  fall back to English. Story text keeps the supplied episode's language, and
+  existing saves remain compatible. CLI lists accept `--title-language`.
 - Import an SHS IPA through setup, drag-and-drop, or `shs-tool import --ipa`
   as an alternative to the Android APK, including its bundled episodes and
   Football Star. Import identifies SHS by its bundle identifier and validates

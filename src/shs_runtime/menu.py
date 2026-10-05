@@ -11,6 +11,7 @@ import sys
 import tempfile
 
 from .content import ContentError, MAX_PAYLOAD, is_bundled
+from .languages import TITLE_LANGUAGES, episode_title
 from .runtime import SaveError, Session
 from .ui_assets import Raster, Rect, UIAssetError, _Reader
 
@@ -170,6 +171,7 @@ class MenuState:
         self.path = library.directory / 'player.json'
         self.music = self.sound = True
         self.order = 'episode'
+        self.title_language = 'en'
         self.selected = None
         self.warning = ''
         if self.path.exists():
@@ -178,10 +180,12 @@ class MenuState:
                 if (not isinstance(data, dict) or data.get('version') != 1
                         or type(data.get('music')) is not bool or type(data.get('sound')) is not bool
                         or not isinstance(data.get('selected'), (str, type(None)))
-                        or data.get('order', 'episode') not in ('episode', 'title')):
+                        or data.get('order', 'episode') not in ('episode', 'title')
+                        or data.get('title_language', 'en') not in TITLE_LANGUAGES):
                     raise ValueError('Invalid player preferences')
                 self.music, self.sound, self.selected = data['music'], data['sound'], data['selected']
                 self.order = data.get('order', 'episode')
+                self.title_language = data.get('title_language', 'en')
             except (ValueError, OSError) as error:
                 self.warning = f'Could not read preferences: {error}'
         ids = {e['id'] for e in library.episodes}
@@ -191,6 +195,9 @@ class MenuState:
             default = next((e for e in library.episodes if (e.get('pack_id'), e.get('episode_id')) == (5, 9)),
                            library.episodes[0])
             self.selected = max(saved)[1] if saved else default['id']
+
+    def title(self, record):
+        return episode_title(record, self.title_language)
 
     def save_path(self, episode, *, automatic=False):
         # Never use an arbitrary selector as part of a host path.
@@ -220,7 +227,8 @@ class MenuState:
         return path
 
     def persist(self):
-        data = dict(version=1, selected=self.selected, music=self.music, sound=self.sound, order=self.order)
+        data = dict(version=1, selected=self.selected, music=self.music, sound=self.sound,
+                    order=self.order, title_language=self.title_language)
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.library.directory,

@@ -2,6 +2,10 @@
 
 ## Added
 
+- **Options → Episode title language** selects English, French, Italian, German
+  or Spanish names where supplied. Lists and title sorting use the preference;
+  search accepts every supplied title. `shs-tool list --title-language fr`
+  overrides it for a single listing. Existing saves remain compatible.
 - Import an SHS IPA through setup, drag-and-drop, or `shs-tool import --ipa`,
   including its bundled episodes and Football Star. IPA import checks the SHS
   bundle identifier and required assets, without requiring a specific version,
@@ -16,6 +20,11 @@
 
 ## Compatibility
 
+- Title selection does not translate story dialogue or game menus. The inspected
+  APK/IPA have one English UI text bank and no alternate translated story
+  scripts were found. The IPA's `Localizable.strings` contains EA promotional
+  translations. Android menu titles use a desktop font fallback for accents
+  absent from its original bitmap fonts.
 - Existing Android libraries and saves remain supported. IPA libraries have
   separate content identities; Android saves cannot be transferred to them.
 - System-font rendering can differ from iOS and affect text layout.

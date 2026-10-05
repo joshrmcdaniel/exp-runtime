@@ -34,12 +34,14 @@ PANEL = (23, 29, 45)
 
 
 class Desktop:
-    def __init__(self, session: Session, *, audio: bool = True, window=None, on_main_menu=None):
+    def __init__(self, session: Session, *, audio: bool = True, window=None, on_main_menu=None,
+                 episode_title=None):
         pygame.display.init()
         pygame.font.init()
         self.window = window if window is not None else pygame.display.set_mode(SIZE, pygame.RESIZABLE)
         self.on_main_menu = on_main_menu
-        pygame.display.set_caption('Surviving High School — ' + session.resources.record['titles'][0])
+        self.episode_title = episode_title if episode_title is not None else session.resources.record['titles'][0]
+        pygame.display.set_caption('Surviving High School — ' + self.episode_title)
         # Cocoa's default opaque surface still carries an alpha bitmask.
         # Explicit RGB avoids its incorrect blending of translucent layers.
         self.canvas = pygame.Surface(SIZE).convert(32)
@@ -320,7 +322,7 @@ class Desktop:
         bar = pygame.Surface((480, 38), pygame.SRCALPHA)
         bar.fill((15, 20, 33, 230))
         self.canvas.blit(bar, (0, 0))
-        title = self.session.resources.record['titles'][0]
+        title = self.episode_title
         self.canvas.set_clip(pygame.Rect(12, 0, 456, 38))
         self._text(title, 14, 10, 900, font=self.small)
         self.canvas.set_clip(None)

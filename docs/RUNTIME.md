@@ -136,7 +136,7 @@ Import/list default to `.shs-library` in the current working directory. The
 player uses an existing local library in a source checkout, otherwise per-user
 application data. A frozen executable always uses per-user application data;
 it never stores content beside the executable. `--library` overrides the path.
-`--episode` accepts an exact title, filename, or unique hash prefix printed by
+`--episode` accepts an exact title from any of the five metadata slots, filename, or unique hash prefix printed by
 `list`. Starting with `play --episode` begins a fresh session. To resume the
 newer automatic/manual checkpoint:
 
@@ -147,6 +147,14 @@ uv run --locked shs-tool play --library /path/to/my-shs-library --episode "The_N
 `--load /path/to/progress.shs-save.json` loads a specific save instead.
 `--no-audio` disables playback. These are runtime JSON saves; original game
 saves are not supported.
+
+**Options → Episode title language** selects English, French, Italian, German
+or Spanish titles where supplied, with English/filename fallback for empty
+slots. `shs-tool list` follows the saved preference; `--title-language en|fr|it|de|es`
+overrides it without writing preferences. Search accepts all supplied titles.
+The inspected game files contain English story text; selecting a title slot
+does not translate dialogue or menus. Saves and live progress stay compatible.
+See [the localization evidence](MAIN_MENU.md#episode-title-languages).
 
 | Input | Action |
 | --- | --- |

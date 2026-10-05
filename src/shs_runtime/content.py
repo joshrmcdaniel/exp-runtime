@@ -447,7 +447,7 @@ class ContentLibrary:
 
     def select(self, selector: str) -> dict:
         matches = [e for e in self.episodes if e['id'].startswith(selector)
-                   or e['name'] == selector or e['titles'][0] == selector
+                   or e['name'] == selector or (selector.strip() and selector in e['titles'])
                    or selector.casefold() in [alias.casefold() for alias in e.get('aliases', [])]]
         if len(matches) != 1:
             raise ContentError(f'Episode selector {selector!r} matched {len(matches)} episodes; use a unique ID from list')

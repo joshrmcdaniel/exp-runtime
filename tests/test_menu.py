@@ -1,4 +1,5 @@
 import importlib.util
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -10,12 +11,24 @@ from unittest.mock import patch
 
 from shs_runtime.content import ContentError, ContentLibrary, digest, import_game
 from shs_runtime.menu import MenuFont, MenuState, MenuStrings, default_library, remember_library
+from shs_runtime.languages import TITLE_LANGUAGES, episode_title
 from shs_runtime.runtime import SaveError
 from test_content import FAKE_NATIVE, archive, make_apk, metadata
 from test_vm import program
 
 
 class MenuContractTests(unittest.TestCase):
+    def test_title_slots_and_missing_translations(self):
+        record = dict(name='Authored.exp', titles=['School', 'École', 'Scuola', 'Schule', 'Escuela'])
+        self.assertEqual([episode_title(record, code) for code in TITLE_LANGUAGES], record['titles'])
+        for missing in ('', '   '):
+            record['titles'][1] = missing
+            self.assertEqual(episode_title(record, 'fr'), 'School')
+        record['titles'][0] = ''
+        self.assertEqual(episode_title(record, 'fr'), 'Authored.exp')
+        with self.assertRaises(ValueError):
+            episode_title(record, 'unknown')
+
     def test_ui_strings_are_offsets_and_byte_text_not_exp_metadata(self):
         payload = b'Play\0Caf\xe9\0'
         data = struct.pack('>iBhh2h', 1, 0, 0, 2, 13, 18) + payload
@@ -122,6 +135,55 @@ class LibraryMenuTests(unittest.TestCase):
         self.assertEqual(path.read_text(), '{ broken')
         with self.assertRaises(ContentError):
             state.save_path('../../outside')
+
+    def test_title_preferences_keep_existing_saves_and_scripts_compatible(self):
+        state = MenuState(self.library)
+        session = state.session(state.selected)
+        session.advance()
+        manual, automatic = session.save(), state.checkpoint(session)
+        original = {path: path.read_bytes() for path in (manual, automatic)}
+        snapshot = session.snapshot()
+        manifest = (self.directory / 'library.json').read_bytes()
+        state.title_language = 'fr'
+        state.persist()
+        restored = MenuState(self.library)
+        self.assertEqual(restored.title(self.library.select(state.selected)), 'École')
+        self.assertEqual(restored.session(restored.selected).snapshot(), snapshot)
+        self.assertEqual(restored.session(restored.selected, resume=False).vm.program.to_bytes(),
+                         session.vm.program.to_bytes())
+        self.assertEqual((self.directory / 'library.json').read_bytes(), manifest)
+        self.assertEqual({path: path.read_bytes() for path in original}, original)
+        # Existing preferences predate this presentation-only field.
+        data = json.loads(state.path.read_text())
+        del data['title_language']
+        state.path.write_text(json.dumps(data))
+        self.assertEqual(MenuState(self.library).title_language, 'en')
+        data['title_language'] = ['fr']
+        state.path.write_text(json.dumps(data))
+        invalid = MenuState(self.library)
+        self.assertEqual(invalid.title_language, 'en')
+        self.assertIn('Invalid player preferences', invalid.warning)
+
+    def test_translated_selectors_and_read_only_cli_title_override(self):
+        from shs_runtime.cli import main
+        english = self.library.episodes[0]
+        self.assertEqual(self.library.select('École')['id'], english['id'])
+        state = MenuState(self.library)
+        state.title_language = 'fr'
+        state.persist()
+        preferences = state.path.read_bytes()
+        for args, title in (([], 'École'), (['--title-language', 'de'], 'Schule')):
+            output = StringIO()
+            with patch('sys.stdout', output):
+                main(['list', '--library', str(self.directory), *args])
+            self.assertIn(title, output.getvalue())
+            self.assertEqual(state.path.read_bytes(), preferences)
+        other = self.root / 'other.exp'
+        other.write_bytes(archive({1: metadata('Another school'), 25001: program(0x33).to_bytes()}))
+        self.library.add_episodes([other])
+        with self.assertRaisesRegex(ContentError, 'matched 2 episodes'):
+            self.library.select('École')
+        self.assertEqual(self.library.select(english['id'][:12])['id'], english['id'])
 
 
 @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is not installed')
@@ -265,6 +327,46 @@ class ApplicationTests(unittest.TestCase):
         app.command(('order',))
         self.assertEqual([e['titles'][0] for e in app.visible_episodes()], ['A', 'B', 'Z'])
         self.assertEqual(MenuState(app.library).order, 'title')
+
+    @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content is unavailable')
+    def test_language_choices_localize_titles_search_and_sort_preserving_live_game(self):
+        import pygame
+        app = self.make_app(library=True)
+        record = next(e for e in app.library.episodes if e['titles'][1] != e['titles'][0])
+        app.selected = record['id']
+        app.start(resume=False)
+        self.assertIsNone(app.game.error)
+        app.return_to_menu()
+        game, snapshot = app.game, app.game.session.snapshot()
+        checkpoint = app.state.resume_path(record['id'])
+        saved = checkpoint.read_bytes()
+        app.show('options')
+        app.tick(200)
+        app.render()
+        self.assertIn(('title_languages',), [command for _, command in app.buttons])
+        app.command(('title_languages',))
+        app.tick(200)
+        app.render()
+        self.assertEqual({command[1] for _, command in app.buttons if command[0] == 'title_language'},
+                         set(TITLE_LANGUAGES))
+        app.command(('title_language', 'fr'))
+        self.assertEqual(MenuState(app.library).title_language, 'fr')
+        self.assertEqual(app.state.title(record), record['titles'][1])
+        self.assertEqual(game.session.snapshot(), snapshot)
+        self.assertEqual(checkpoint.read_bytes(), saved)
+        app.query = record['titles'][1]
+        self.assertIn(record, app.visible_episodes())
+        app.query = record['titles'][0]
+        self.assertIn(record, app.visible_episodes())
+        app.query = ''
+        app.state.order = 'title'
+        titles = [app.state.title(e).casefold() for e in app.visible_episodes()]
+        self.assertEqual(titles, sorted(titles))
+        app.start()
+        self.assertIs(app.game, game)
+        self.assertEqual(game.episode_title, record['titles'][1])
+        self.assertIn(record['titles'][1], pygame.display.get_caption()[0])
+        self.assertEqual(game.session.snapshot(), snapshot)
 
 
 if __name__ == '__main__':
