@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shs-runtime"
-version = "0.1.3"
+version = "0.2.0"
 description = "A compatible Surviving High School engine using player-supplied game files"
 readme = "README.md"
 license = {file = "LICENSE"}

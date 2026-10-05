@@ -3,7 +3,7 @@
 User-visible changes are recorded here. Changes awaiting a versioned release
 are listed under Unreleased.
 
-## Unreleased
+## v0.2.0
 
 ### Added
 
