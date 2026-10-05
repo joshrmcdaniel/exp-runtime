@@ -8,6 +8,12 @@ Resolve them only for music playback; resource lookup and VM IDs stay exact.
 from dataclasses import dataclass
 
 
+# SHSEngine::resetResList (iOS 0003a3c8): these original music IDs were
+# downloaded outside the IPA. Their Android 1.0.9 counterparts share the
+# same IDs/cues. No other cross-platform resource equivalence is implied.
+IOS_DOWNLOADED_MUSIC = (8201, 8205, 8207, 8209, 8212, 8217, 8219, 8221, 8223, 8224)
+
+
 @dataclass(frozen=True)
 class MusicCue:
     asset_id: int

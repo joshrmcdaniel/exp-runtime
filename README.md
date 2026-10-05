@@ -65,6 +65,12 @@ uv run --locked --extra desktop shs
 3. Select an episode in Play/Resume. Imported episodes and progress persist
    when you close the app.
 
+For an IPA, you can optionally supply your Android 1.0.9 APK through **Options →
+Content Library → Add APK Music** to restore music the iOS app downloaded
+separately. IPA artwork and installed original fonts keep priority, and your
+IPA saves remain compatible. See [IPA import](docs/IPA.md#optional-apk-music)
+for command-line options and supported assets.
+
 > Store the episodes within a folder
 >
 > Example:

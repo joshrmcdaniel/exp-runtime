@@ -152,6 +152,7 @@ Main menu -> Play or episode list -> Episode -> Play/Resume -> Session
 Session -> Pause -> Main menu -> Automatic checkpoint -> Main menu
 Session -> Service 7/63 -> Terminal checkpoint -> Main menu (no Resume)
 Main menu -> Options -> Add EXP files/folder -> Validate/copy -> Episode list
+IPA library -> Options -> Content Library -> Add APK Music -> Validate/copy -> Library
 ```
 
 The file picker is implemented inside the application, so a packaged app does
@@ -159,6 +160,14 @@ not need a terminal, Python installation, Tk, or an external file-dialog
 utility. Files and whole episode folders can also be dropped onto the menu.
 A multi-file SDL drop is collected into one import transaction. Parsing and
 copying run on a worker; the render/event loop continues at 60 Hz.
+
+An initial drop containing one IPA and one APK uses the IPA as the base game
+and the APK only for its verified missing music. An existing IPA library also
+accepts a single dropped APK or the **Add APK Music** file picker, which filters
+for `.apk` files. The library panel shows the missing track count and offers
+the action only while tracks are absent. Music import preserves the live story,
+checkpoints and loaded audio; Resume retries a cue whose earlier load failed.
+See [IPA.md](IPA.md#optional-apk-music) for asset precedence and manifest version 3.
 
 Initial imports stage a new library and publish by directory rename.
 `ContentLibrary.add_episodes()` stages and validates the entire batch before

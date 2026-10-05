@@ -17,6 +17,7 @@ import tempfile
 from zipfile import BadZipFile, ZipFile
 from xml.parsers.expat import ExpatError
 
+from .audio import IOS_DOWNLOADED_MUSIC
 from .decode.bytecode import decode_program
 
 
@@ -237,7 +238,19 @@ def _episode_inputs(paths):
     return list(episodes.values()), catalog
 
 
-def import_game(apk_path: Path, episode_paths: list[Path], destination: Path) -> dict:
+def _apk_music_members(apk: ZipFile, ipa_members):
+    """Verify only the known iOS download bank; IPA bytes always win."""
+    members = {}
+    for resource in IOS_DOWNLOADED_MUSIC:
+        if resource not in ipa_members:
+            name = f'assets/Assets/audio/music/{resource}.mp3'
+            _zip_read(apk, name)  # Validate presence, ZIP integrity and size before publishing.
+            members[resource] = name
+    return members
+
+
+def import_game(apk_path: Path, episode_paths: list[Path], destination: Path, *,
+                music_apk: Path | None = None) -> dict:
     """Create a relocatable library atomically; keep original inputs untouched.
 
     A failed import leaves no partly usable library. Additional episodes are
@@ -248,6 +261,8 @@ def import_game(apk_path: Path, episode_paths: list[Path], destination: Path) ->
     kind = apk_path.suffix.lower().lstrip('.')
     if kind not in ('apk', 'ipa'):
         raise ContentError('Choose an SHS Android 1.0.9 APK or an SHS IPA')
+    if music_apk is not None and kind != 'ipa':
+        raise ContentError('An optional music APK can only supplement an IPA library')
     if destination.exists():
         raise ContentError(f'Library already exists: {destination}; choose a new directory')
     external, catalog = _episode_inputs(episode_paths)
@@ -314,6 +329,10 @@ def import_game(apk_path: Path, episode_paths: list[Path], destination: Path) ->
         if catalog.entries:
             manifest['episode_catalog'] = catalog.to_data()
         (staged / 'library.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+        if music_apk is not None:
+            with ContentLibrary(staged) as library:
+                library.add_music_apk(music_apk)
+                manifest = library.manifest
         staged.rename(destination)
     return manifest
 
@@ -327,12 +346,14 @@ class ContentLibrary:
             raise ContentError(f'Cannot open content library: {error}') from error
         m = self.manifest
         if (not isinstance(m, dict) or m.get('format') != 'shs-content-library'
-                or (m.get('version'), m.get('profile')) not in ((1, PROFILE), (2, IOS_PROFILE))):
+                or (m.get('version'), m.get('profile')) not in ((1, PROFILE), (2, IOS_PROFILE), (3, IOS_PROFILE))):
             raise ContentError('Unsupported content library format or game profile')
         self.profile = m['profile']
         self.kind = 'ipa' if self.profile == IOS_PROFILE else 'apk'
         member_key = self.kind + '_member'
         if (not isinstance(m.get(self.kind), dict) or ('apk' in m and 'ipa' in m)
+                or ('music_apk' in m) != (m['version'] == 3)
+                or ('music_apk' in m and not isinstance(m['music_apk'], dict))
                 or not isinstance(m.get('episodes'), list) or not m['episodes']):
             raise ContentError('Invalid content library manifest')
         seen = set()
@@ -397,6 +418,16 @@ class ContentLibrary:
             name = f'assets/Assets/{resource_id}.mp3'
             if name in self.apk.namelist():
                 self.base_members[resource_id] = name
+        self.music_apk, self.music_members = None, {}
+        if 'music_apk' in m:
+            try:
+                self.music_apk = ZipFile(self._content_file(m['music_apk'], '.apk'))
+                if _inspect_apk(self.music_apk) != m['music_apk'].get('native_sha256'):
+                    raise ContentError('Music APK native profile does not match the library manifest')
+                self.music_members = _apk_music_members(self.music_apk, self.base_members)
+            except (BadZipFile, ContentError, OSError) as error:
+                self.close()
+                raise ContentError(f'Invalid imported music APK: {error}') from error
 
     def _content_file(self, record: dict, suffix: str) -> Path:
         sha = record.get('sha256')
@@ -457,7 +488,63 @@ class ContentLibrary:
         try:
             return _zip_read(self.apk, self.base_members[resource_id])
         except KeyError:
+            if resource_id in self.music_members:
+                return _zip_read(self.music_apk, self.music_members[resource_id])
             raise ContentError(f'{self.kind.upper()} resource {resource_id} is missing') from None
+
+    @property
+    def missing_music_ids(self):
+        if self.kind != 'ipa':
+            return ()
+        return tuple(resource for resource in IOS_DOWNLOADED_MUSIC
+                     if resource not in self.base_members and resource not in self.music_members)
+
+    def add_music_apk(self, source: Path) -> int:
+        """Attach optional music transactionally, preserving IPA assets and saves.
+
+        Only the verified iOS download IDs are exposed. Android fonts, UI,
+        scripts, episodes and other resources never enter the IPA's banks.
+        """
+        source = Path(source)
+        if self.kind != 'ipa':
+            raise ContentError('An optional music APK can only supplement an IPA library')
+        if source.suffix.lower() != '.apk':
+            raise ContentError('Choose your SHS Android 1.0.9 APK for missing music')
+        if not self.missing_music_ids:
+            return 0
+        with tempfile.TemporaryDirectory(prefix='.shs-import-', dir=self.directory) as temporary:
+            stage = Path(temporary)
+            copied = stage / 'music.apk'
+            shutil.copyfile(source, copied)
+            sha = file_digest(copied)
+            try:
+                with ZipFile(copied) as apk:
+                    native = _inspect_apk(apk)
+                    members = _apk_music_members(apk, self.base_members)
+            except BadZipFile as error:
+                raise ContentError('The supplied music APK is not a valid ZIP archive') from error
+            record = dict(file=f'content/{sha}.apk', sha256=sha, native_sha256=native)
+            current = json.loads((self.directory / 'library.json').read_text(encoding='utf-8'))
+            if current != self.manifest:
+                raise ContentError('The library changed during import; reopen it and try again')
+            updated = dict(self.manifest, version=3, music_apk=record)
+            manifest_path = stage / 'library.json'
+            manifest_path.write_text(json.dumps(updated, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+            target = self.directory / record['file']
+            existed = target.exists()
+            copied.replace(target)
+            retained = None
+            try:
+                retained = ZipFile(target)
+                manifest_path.replace(self.directory / 'library.json')
+            except BaseException:
+                if retained is not None:
+                    retained.close()
+                if not existed:
+                    target.unlink(missing_ok=True)
+                raise
+            self.manifest, self.music_apk, self.music_members = updated, retained, members
+            return len(members)
 
     def add_episodes(self, paths: list[Path]) -> int:
         """Validate a batch before atomically publishing an expanded manifest.
@@ -520,6 +607,8 @@ class ContentLibrary:
 
     def close(self):
         self.apk.close()
+        if self.music_apk is not None:
+            self.music_apk.close()
 
     def __enter__(self):
         return self
@@ -535,6 +624,9 @@ class EpisodeResources:
 
     @property
     def identity(self):
+        # Optional music is presentation-only: attaching it must not invalidate
+        # an existing IPA checkpoint. Both source archives are still hashed and
+        # checked on open; script/layout/font identities stay with the IPA.
         return dict(profile=self.library.profile, episode_sha256=self.record['sha256'],
                     **{self.library.kind + '_sha256': self.library.manifest[self.library.kind]['sha256']})
 
@@ -543,8 +635,9 @@ class EpisodeResources:
 
     def exists(self, resource_id: int) -> bool:
         # FUN_00082bc0 selects the episode bank at 26000 for art resources.
-        return resource_id in (self.archive.entries if resource_id >= 26000
-                               else self.library.base_members)
+        if resource_id >= 26000:
+            return resource_id in self.archive.entries
+        return resource_id in self.library.base_members or resource_id in self.library.music_members
 
     def read_asset(self, resource_id: int) -> bytes:
         if resource_id >= 26000:

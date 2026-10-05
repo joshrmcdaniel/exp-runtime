@@ -17,6 +17,10 @@ are listed under Unreleased.
   missing-content limits are documented in [IPA support](docs/IPA.md). The
   inspected IPA omits ten music tracks the original app downloaded separately;
   scenes requesting these tracks remain silent with the IPA alone.
+- Optionally supply an Android 1.0.9 APK to restore missing IPA music during
+  import or later through **Add APK Music** / `shs-tool add-music`. IPA assets
+  and original installed fonts keep priority. Existing IPA saves and live
+  story progress are preserved; no server download is required.
 
 ## v0.1.3
 

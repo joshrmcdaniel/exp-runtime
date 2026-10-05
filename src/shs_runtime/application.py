@@ -257,7 +257,8 @@ class Application:
 
     def read_folder(self, folder):
         folder = Path(folder).expanduser().resolve()
-        extensions = {'.apk', '.ipa'} if self.browser_kind == 'apk' else {'.exp'} if self.browser_kind == 'episodes' else set()
+        extensions = ({'.apk', '.ipa'} if self.browser_kind == 'apk' else {'.apk'}
+                      if self.browser_kind == 'music_apk' else {'.exp'} if self.browser_kind == 'episodes' else set())
         files = [p for p in folder.iterdir() if not p.name.startswith('.')
                  and (p.is_dir() or p.suffix.lower() in extensions
                       or (self.browser_kind == 'episodes' and p.name.lower() == 'shs_options.sav'))]
@@ -275,12 +276,20 @@ class Application:
             return
         paths = [Path(p).expanduser() for p in paths]
         if not self.library:
-            apks = [p for p in paths if p.suffix.lower() in ('.apk', '.ipa')]
-            if len(apks) != 1:
-                raise ContentError('Choose one APK or IPA first. You can add episode files afterward.')
-            episodes = [p for p in paths if p != apks[0]]
+            ipas = [p for p in paths if p.suffix.lower() == '.ipa']
+            apks = [p for p in paths if p.suffix.lower() == '.apk']
+            if len(ipas) > 1 or len(apks) > 1 or not (ipas or apks):
+                raise ContentError('Choose one APK or IPA. An IPA can also include one APK for missing music.')
+            source = ipas[0] if ipas else apks[0]
+            music_apk = apks[0] if ipas and apks else None
+            episodes = [p for p in paths if p not in ipas + apks]
             self.job_kind = 'library'
-            self.job = self.executor.submit(import_game, apks[0], episodes, self.directory)
+            self.job = self.executor.submit(import_game, source, episodes, self.directory, music_apk=music_apk)
+        elif any(p.suffix.lower() == '.apk' for p in paths):
+            if len(paths) != 1:
+                raise ContentError('Add one music APK at a time; add episode files separately.')
+            self.job_kind = 'music'
+            self.job = self.executor.submit(self.library.add_music_apk, paths[0])
         else:
             self.job_kind = 'episodes'
             self.job = self.executor.submit(self.library.add_episodes, paths)
@@ -369,6 +378,15 @@ class Application:
                 result = job.result()
                 if kind == 'library':
                     self.open_library(self.directory)
+                elif kind == 'music':
+                    # Retry the current cue on Resume if its earlier load failed.
+                    # Keep the live story and all existing checkpoints intact.
+                    if self.game and result and not self.game.music_loaded:
+                        self.game.music_token = None
+                    self.history = ['main']
+                    self.show('library', remember=False)
+                    self.message = (f'Added {result} missing music tracks.' if result
+                                    else 'No missing music tracks to add.')
                 else:
                     self.refresh_saves()
                     self.scope, self.query, self.history = 'all', '', ['main']

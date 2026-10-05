@@ -115,7 +115,11 @@ uv run --locked --extra desktop shs-tool play --library /path/to/my-shs-library 
 ```
 
 For an IPA, replace `--apk /path/to/game.apk` with `--ipa /path/to/game.ipa`.
-Only one base package is used per library.
+Optionally add `--music-apk /path/to/game.apk` to supply its missing original
+music. For an existing IPA library, use **Options → Content Library → Add APK
+Music** or `shs-tool add-music --apk /path/to/game.apk --library /path/to/library`.
+The IPA remains the base package; its assets and installed original fonts take
+precedence. See [optional APK music](IPA.md#optional-apk-music) for the exact scope.
 
 Without uv, install with `python -m pip install -e '.[desktop]'`, then use
 `shs-tool` from that environment. Decoder/headless tools do not require pygame.
@@ -176,6 +180,10 @@ Android manifests have `format: "shs-content-library"`, `version: 1`, and
 `native_sha256`. IPA manifests use `version: 2`, `profile: "shs-ios-assets-v1"`,
 and `ipa` containing `file`, `sha256`, and informational `app` plist metadata.
 They do not contain an `apk` record or require a native executable hash.
+With optional APK music, an IPA library uses version 3 and a separate
+`music_apk` record (`file`, `sha256`, `native_sha256`). Only the ten verified
+iOS download IDs absent from the IPA can resolve through this supplemental
+archive. All required tracks are validated before publishing the new manifest.
 Each `episodes` entry contains:
 
 | Field | Type / meaning |
@@ -220,6 +228,9 @@ Android engine profile, whereas the **profile and complete package/EXP hashes**
 identify save content compatibility. A differently repacked package may import
 but has a different save identity. IPA saves use `ipa_sha256` in place of
 `apk_sha256`; the JSON save version does not change.
+The optional music APK is hash-checked on open but excluded from save identity:
+adding audio does not alter the story, layout or fonts, and old IPA saves remain
+compatible. Its addition does not rewrite any manual or automatic save files.
 
 The runtime's strict EXP reader follows [SCHEMA.md](SCHEMA.md): BE outer
 fields, the LE LZMA wrapper, aliases, and five UTF-8 titles. It rejects partial

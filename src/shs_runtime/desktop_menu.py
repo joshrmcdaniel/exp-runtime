@@ -270,10 +270,20 @@ class MenuRenderer:
         elif screen == 'library':
             self.panel('Content Library')
             self.label(f'{len(app.library.episodes)} imported episodes', (29, 129, 262, 45), size=20)
-            self.label('Your APK or IPA supplies the base game assets. Episode files supply their own stories and artwork. Your originals are kept intact.',
-                       (29, 197, 262, 95), color=GRAY)
-            self.button('Add Episodes', (30, 315, 260, 34), ('browse', 'episodes'))
-            self.button('Open Another Library', (30, 369, 260, 34), ('browse', 'library'))
+            if app.library.kind == 'ipa':
+                count = len(app.library.missing_music_ids)
+                caption = (f'{count} music tracks are missing. Optionally add your Android APK to supply them.'
+                           if count else 'All separately downloaded music tracks are available.')
+                self.label(caption, (29, 191, 262, 95), color=GRAY)
+                self.button('Add Episodes', (30, 299, 260, 32), ('browse', 'episodes'))
+                if count:
+                    self.button('Add APK Music', (30, 343, 260, 32), ('browse', 'music_apk'))
+                self.button('Open Another Library', (30, 387, 260, 32), ('browse', 'library'))
+            else:
+                self.label('Your APK supplies the base game assets. Episode files supply their own stories and artwork. Your originals are kept intact.',
+                           (29, 197, 262, 95), color=GRAY)
+                self.button('Add Episodes', (30, 315, 260, 34), ('browse', 'episodes'))
+                self.button('Open Another Library', (30, 369, 260, 34), ('browse', 'library'))
         elif screen == 'help':
             self.panel('Help / About')
             self.label('Click or press Space to reveal text and continue. Escape opens the pause menu. F5 saves; F9 loads your manual save.',
@@ -283,7 +293,8 @@ class MenuRenderer:
             self.label('SHS Runtime\nAn independent engine reconstruction. Some game features remain unimplemented.',
                        (29, 349, 262, 62), size=11, color=GRAY)
         elif screen == 'browser':
-            self.panel({'apk': 'Choose Game', 'episodes': 'Add Episodes', 'library': 'Open Library'}[app.browser_kind])
+            self.panel({'apk': 'Choose Game', 'music_apk': 'Add APK Music',
+                        'episodes': 'Add Episodes', 'library': 'Open Library'}[app.browser_kind])
             pygame.draw.rect(self.canvas, (230, 236, 244), (19, 110, 282, 37), border_radius=4)
             self.label(app.path_text, (24, 114, 272, 30), size=11)
             self.buttons.append((pygame.Rect(19, 110, 282, 37), ('path',)))
@@ -301,7 +312,7 @@ class MenuRenderer:
             self.canvas.set_clip(None)
             if not app.files:
                 self.label('No matching files in this folder.', (30, 230, 260, 70), color=GRAY)
-            if app.browser_kind != 'apk':
+            if app.browser_kind in ('episodes', 'library'):
                 self.button('Use This Folder', (162, 436, 146, 29), ('folder',))
         if app.busy:
             self.overlay('Importing content', 'Checking and copying your files...')

@@ -14,6 +14,45 @@ and no original artwork, fonts, scripts or executable is distributed with the
 engine. This adds an asset source to the desktop player; it does not build an
 iOS application or execute the original Mach-O binary.
 
+## Optional APK music
+
+Some original iOS music was downloaded separately and is absent from the IPA.
+To supply it locally, add an optional Android 1.0.9 APK:
+
+```sh
+uv run --locked shs-tool import --ipa /path/to/game.ipa --music-apk /path/to/game.apk --library /path/to/ios-library
+```
+
+For an existing IPA library, choose **Options → Content Library → Add APK
+Music**, drop one APK onto the menu, or run:
+
+```sh
+uv run --locked shs-tool add-music --apk /path/to/game.apk --library /path/to/ios-library
+```
+
+During first setup, dropping one IPA and one APK together also selects the IPA
+as the game and the APK as the music source. Additional EXP files may accompany
+that initial drop. When adding music to an existing library, add the APK and
+any episode files in separate operations.
+
+**IPA assets always take precedence.** The supplement exposes only missing
+members of the ten verified music IDs listed below, using their exact Android
+`assets/Assets/audio/music/<id>.mp3` paths. Android artwork, fonts, scripts and
+bundled episodes are not substituted or imported. Font selection remains the
+bundled/installed original face, followed by the system default. Other missing
+assets keep their existing errors rather than acquiring guessed mappings.
+
+The APK is copied privately into the library, validated against the existing
+Android 1.0.9 native profile, and checked for every needed track before the
+manifest is replaced. Duplicate members, missing tracks, invalid profiles and
+ZIP errors abort the operation. Repeating an import after all ten tracks are
+available does nothing. The original inputs can be moved or removed afterward.
+No game files are downloaded or included in the engine distribution.
+
+Existing IPA saves continue to load. Music import leaves their bytes, episode
+IDs, script state and font metrics unchanged. A live story retries a previously
+missing cue when resumed; an already loaded stream keeps its paused position.
+
 ## Identification and compatibility
 
 The importer requires one `Payload/<name>.app/Info.plist` and recognizes SHS
@@ -37,8 +76,9 @@ libraries. Unsupported services and unknown formats remain explicit stops.
 
 ## Resource banks and local extraction
 
-Numeric files are read only from the app's immediate `res_generated/` directory,
-using canonical decimal filenames. Script-visible IDs are unchanged:
+Numeric IPA files are read from the app's immediate `res_generated/` directory,
+using canonical decimal filenames. The optional music bank above fills only
+its verified missing IDs. Script-visible IDs are unchanged:
 resources below 26000 come from the base game; resources at or above 26000 come
 from the selected EXP. Script loading separately gives the episode's exact
 script IDs priority. The iOS base/episode split is visible in
@@ -75,6 +115,13 @@ records use `ipa_member`; copied EXPs retain `file`. Save content identity is
 `profile`, `ipa_sha256`, and `episode_sha256`. The complete archive hash is
 checked on open, so repacking changes save identity even when assets match.
 Existing version-1 Android libraries and their save identities are preserved.
+
+Adding APK music upgrades the manifest to version 3, with a `music_apk` record
+containing `file`, `sha256` and `native_sha256`. Both the IPA and supplemental
+APK archives are checked on open. This presentation-only supplement is excluded
+from save identity so existing IPA checkpoints remain compatible. Older runtime
+versions reject the version-3 library rather than silently ignoring its music.
+The source profile, primary `ipa` record and episode records stay unchanged.
 
 ## Fonts
 
@@ -149,17 +196,18 @@ app, but all are present in the supplied APK.
 
 The New Girl's opening requests 8217, then 8201, then 8224, so its music stays
 silent with this IPA alone even though the archive contains other playable
-music. These requests were traced through actual story execution. The desktop
-importer currently reads the IPA bundle only; it does not import a separate
-iOS download cache, supplement music from an APK, or contact the original
-server. Missing audio produces the existing diagnostic. For playback with
-these tracks now, use an APK-backed library; its saves and the IPA library's
-saves remain separate.
+music. These requests were traced through actual story execution. The optional
+APK import above supplies these tracks. Importing an iOS download cache and
+contacting the original server are not implemented. Without the optional APK,
+missing audio retains its existing diagnostic.
 
 Optional local tests import all four stories and exercise The New Girl through
 its first word game, including name entry and same-font save restoration.
 Audio checks use the real SDL decoder with a dummy audio output; they do not
-verify physical speaker output or recover the separately downloaded tracks.
+verify physical speaker output. They cover all bundled tracks, the optional
+APK music and its alternate cues, plus adding music while a live story is
+paused with a previously missing cue. Authored checks cover IPA precedence,
+unchanged checkpoints, relocation, source validation and atomic failure paths.
 Authored minigame calls also render the supplied football targets/feedback and
 grid assets. Container, identity, required-asset and font-selection checks use
 authored fixtures. No original files are added to tests.

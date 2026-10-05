@@ -32,6 +32,8 @@ def _build_parser() -> argparse.ArgumentParser:
     source = import_parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--apk", type=Path, help="Your SHS Android 1.0.9 APK.")
     source.add_argument("--ipa", type=Path, help="Your SHS IPA with compatible game assets.")
+    import_parser.add_argument("--music-apk", type=Path,
+                               help="Optional Android 1.0.9 APK supplying missing IPA music.")
     import_parser.add_argument("--episodes", type=Path, nargs="+", action="extend", default=[],
                                help="EXP files or directories; directories are scanned recursively.")
     import_parser.add_argument("--library", type=Path, default=Path(".shs-library"),
@@ -39,6 +41,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     list_parser = subparsers.add_parser("list", help="List episodes in a local content library.")
     list_parser.add_argument("--library", type=Path, default=Path(".shs-library"))
+
+    music_parser = subparsers.add_parser("add-music", help="Add missing music to an existing IPA library.")
+    music_parser.add_argument("--apk", type=Path, required=True, help="Your SHS Android 1.0.9 APK.")
+    music_parser.add_argument("--library", type=Path, required=True, help="Existing IPA library.")
 
     play_parser = subparsers.add_parser("play", help="Open the main menu, or start a selected episode.")
     play_parser.add_argument("--library", type=Path, help="Content library; defaults to the existing local library or user application data.")
@@ -64,14 +70,15 @@ def main(argv: list[str] | None = None) -> None:
         log_level = logging.INFO
     logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s")
 
-    if args.command in ("import", "list", "play"):
+    if args.command in ("import", "list", "play", "add-music"):
         from .content import ContentError, ContentLibrary, import_game
         from .runtime import SaveError
         from .vm import VMError
 
         try:
             if args.command == "import":
-                manifest = import_game(args.apk or args.ipa, args.episodes, args.library)
+                manifest = import_game(args.apk or args.ipa, args.episodes, args.library,
+                                       music_apk=args.music_apk)
                 print(f"Imported {len(manifest['episodes'])} episodes into {args.library}")
                 return
             if args.command == 'play':
@@ -97,6 +104,10 @@ def main(argv: list[str] | None = None) -> None:
                 app.run()
                 return
             with ContentLibrary(args.library) as library:
+                if args.command == 'add-music':
+                    count = library.add_music_apk(args.apk)
+                    print(f'Added {count} missing music tracks.' if count else 'No missing music tracks to add.')
+                    return
                 library.ensure_builtin_episodes()
                 if args.command == "list":
                     for record in library.episodes:
