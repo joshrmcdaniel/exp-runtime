@@ -17,11 +17,11 @@ class PackagingTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        self.bundle = self.root / 'dist/desktop/SHS Runtime'
+        self.bundle = self.root / 'dist/desktop/EXP Runtime'
         self.bundle.mkdir(parents=True)
 
     def test_windows_download_contains_complete_app_and_no_neighboring_inputs(self):
-        (self.bundle / 'SHS Runtime.exe').write_bytes(b'authored executable fixture')
+        (self.bundle / 'EXP Runtime.exe').write_bytes(b'authored executable fixture')
         (self.bundle / '_internal').mkdir()
         (self.bundle / '_internal/runtime.dll').write_bytes(b'authored dependency fixture')
         (self.bundle.parent / 'private.apk').write_bytes(b'authored excluded fixture')
@@ -30,31 +30,31 @@ class PackagingTests(unittest.TestCase):
         result = package(self.root, 'windows-x64', 'v0.1.0')
         with zipfile.ZipFile(result) as archive:
             files = {i.filename for i in archive.infolist() if not i.is_dir()}
-            self.assertEqual(files, {'SHS Runtime/SHS Runtime.exe', 'SHS Runtime/_internal/runtime.dll'})
-            self.assertEqual(archive.read('SHS Runtime/_internal/runtime.dll'), b'authored dependency fixture')
+            self.assertEqual(files, {'EXP Runtime/EXP Runtime.exe', 'EXP Runtime/_internal/runtime.dll'})
+            self.assertEqual(archive.read('EXP Runtime/_internal/runtime.dll'), b'authored dependency fixture')
         checksum = result.with_name(result.name + '.sha256').read_bytes()
         self.assertEqual(checksum, f'{hashlib.sha256(result.read_bytes()).hexdigest()}  {result.name}\n'.encode('ascii'))
 
     @unittest.skipIf(os.name == 'nt', 'Unix modes and symbolic links')
     def test_linux_download_preserves_executable_mode_and_relative_link(self):
-        program = self.bundle / 'SHS Runtime'
+        program = self.bundle / 'EXP Runtime'
         program.write_bytes(b'authored executable fixture')
         program.chmod(0o755)
         (self.bundle / 'library.so').write_bytes(b'authored dependency fixture')
         (self.bundle / 'alias.so').symlink_to('library.so')
         result = package(self.root, 'linux-x64', '0123456789abcdef0123456789abcdef01234567')
-        self.assertEqual(result.name, 'shs-runtime-0123456789ab-linux-x64.tar.gz')
+        self.assertEqual(result.name, 'exp-runtime-0123456789ab-linux-x64.tar.gz')
         with tarfile.open(result) as archive:
-            self.assertEqual(archive.getmember('SHS Runtime/SHS Runtime').mode, 0o755)
-            link = archive.getmember('SHS Runtime/alias.so')
+            self.assertEqual(archive.getmember('EXP Runtime/EXP Runtime').mode, 0o755)
+            link = archive.getmember('EXP Runtime/alias.so')
             self.assertTrue(link.issym())
             self.assertEqual(link.linkname, 'library.so')
             self.assertEqual((link.uid, link.gid, link.uname, link.gname), (0, 0, '', ''))
 
     def test_game_inputs_in_the_app_abort_packaging(self):
-        (self.bundle / 'SHS Runtime.exe').write_bytes(b'authored executable fixture')
+        (self.bundle / 'EXP Runtime.exe').write_bytes(b'authored executable fixture')
         for name in ('GAME.APK', 'GAME.IPA', 'story.EXP', 'library.json', 'libshs09.so',
-                     'Surviving_HS', 'Surviving_HS.app', 'res_generated', 'native-vm.c', 'player.shs-auto.json'):
+                     'Surviving_HS', 'Surviving_HS.app', 'CoD', 'CoD.app', 'res_generated', 'native-vm.c', 'player.shs-auto.json'):
             with self.subTest(name=name):
                 path = self.bundle / name
                 path.write_bytes(b'authored prohibited fixture')
@@ -92,7 +92,7 @@ class PackagingTests(unittest.TestCase):
         before = manifest.read_bytes()
         env = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy',
                    PYGAME_HIDE_SUPPORT_PROMPT='1')
-        result = subprocess.run([sys.executable, '-m', 'shs_runtime.application', '--smoke-test',
+        result = subprocess.run([sys.executable, '-m', 'exp_runtime.application', '--smoke-test',
                                  '--library', str(supplied)], cwd=self.root, env=env,
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)

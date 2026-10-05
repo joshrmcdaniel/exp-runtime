@@ -3,10 +3,10 @@ import json
 from pathlib import Path
 import unittest
 
-from shs_runtime.content import ContentLibrary
-from shs_runtime.minigames import NativeRandom
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.word_grid import GridProblem, WordGrid
+from exp_runtime.content import ContentLibrary
+from exp_runtime.randomness import NativeRandom
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.shs.word_grid import GridProblem, WordGrid
 from test_runtime import Resources, host_call, text_words
 from test_vm import program
 

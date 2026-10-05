@@ -3,7 +3,8 @@
 global-exclude *
 include LICENSE README.md AGENTS.md pyproject.toml uv.lock MANIFEST.in .gitignore
 include RELEASE.md CHANGELOG.md MAINTAINERS.md
-recursive-include src/shs_runtime *.py
+recursive-include src/exp_runtime *.py
+include src/exp_runtime/assets/kiwi.svg
 recursive-include tests test_*.py
 include docs/SCHEMA.md docs/VM_SPEC.md
 include docs/DISTRIBUTION.md docs/DEVELOPMENT.md docs/PROVENANCE.md
@@ -14,6 +15,7 @@ include docs/FOOTBALL_UI.md
 include docs/TITLE_SCREENS.md
 include docs/NAME_INPUT.md
 include docs/IPA.md
+include docs/COD.md
 include docs/MAIN_MENU.md docs/STORY_SERVICES.md docs/EPISODE_CATALOG.md
 include tools/build_desktop.py tools/audit_format.py tools/audit_vm.py
 include tools/audit_runtime.py tools/audit_ui_assets.py

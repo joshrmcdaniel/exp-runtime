@@ -3,10 +3,10 @@ import json
 from pathlib import Path
 import unittest
 
-from shs_runtime.content import ContentLibrary
-from shs_runtime.minigames import Random48
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.vm import VMError
+from exp_runtime.content import ContentLibrary
+from exp_runtime.randomness import Random48
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.vm import VMError
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 

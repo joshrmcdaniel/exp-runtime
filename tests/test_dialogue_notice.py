@@ -7,9 +7,9 @@ import os
 from types import SimpleNamespace
 import unittest
 
-from shs_runtime.dialogue_notice import NOTICE_FONT, NoticeMotion, notice_lifetime
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.ui_assets import Rect
+from exp_runtime.dialogue_notice import NOTICE_FONT, NoticeMotion, notice_lifetime
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.ui_assets import Rect
 from test_fonts import descriptor
 from test_runtime import Resources, host_call, text_words
 from test_vm import program
@@ -116,9 +116,9 @@ class NoticeTests(unittest.TestCase):
     def test_authored_font_pixels_follow_the_wave_and_hidden_parent(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.desktop import Desktop
-        from shs_runtime.desktop_dialogue import DialogueRenderer
-        from shs_runtime.desktop_text import BitmapTextRenderer
+        from exp_runtime.desktop import Desktop
+        from exp_runtime.desktop_dialogue import DialogueRenderer
+        from exp_runtime.desktop_text import BitmapTextRenderer
         pygame.display.init()
         pygame.display.set_mode((320, 480))
         self.addCleanup(pygame.quit)

@@ -9,10 +9,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from shs_runtime.content import ContentError, ContentLibrary, digest, import_game
-from shs_runtime.menu import MenuFont, MenuState, MenuStrings, default_library, remember_library
-from shs_runtime.languages import TITLE_LANGUAGES, episode_title
-from shs_runtime.runtime import SaveError
+from exp_runtime.content import ContentError, ContentLibrary, digest, import_game
+from exp_runtime.menu import MenuFont, MenuState, MenuStrings, default_library, remember_library
+from exp_runtime.languages import TITLE_LANGUAGES, episode_title
+from exp_runtime.runtime import SaveError
 from test_content import FAKE_NATIVE, archive, make_apk, metadata
 from test_vm import program
 
@@ -54,17 +54,17 @@ class MenuContractTests(unittest.TestCase):
     def test_frozen_default_never_uses_working_directory(self):
         with patch.object(sys, 'frozen', True, create=True), patch.object(sys, 'platform', 'linux'), \
                 patch.dict(os.environ, {'XDG_DATA_HOME': '/tmp/shs-test-data'}):
-            self.assertEqual(default_library(), Path('/tmp/shs-test-data/SHS Runtime/library'))
+            self.assertEqual(default_library(), Path('/tmp/shs-test-data/EXP Runtime/libraries/shs'))
 
     def test_chosen_library_is_remembered_across_working_directories(self):
         with tempfile.TemporaryDirectory() as directory, \
-                patch('shs_runtime.menu.user_data_directory', return_value=Path(directory) / 'preferences'):
+                patch('exp_runtime.launcher.user_data_directory', return_value=Path(directory) / 'preferences'):
             chosen = Path(directory) / 'my-game'
             remember_library(chosen)
             with patch.object(sys, 'frozen', True, create=True):
                 self.assertEqual(default_library(), chosen.resolve())
             self.assertEqual(default_library(), chosen.resolve())  # Also overrides a checkout's library.
-            self.assertEqual(json.loads((Path(directory) / 'preferences/launcher.json').read_text())['version'], 1)
+            self.assertEqual(json.loads((Path(directory) / 'preferences/launcher.json').read_text())['version'], 2)
 
 
 class LibraryMenuTests(unittest.TestCase):
@@ -72,7 +72,7 @@ class LibraryMenuTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        profile = patch('shs_runtime.content.NATIVE_SHA256', digest(FAKE_NATIVE))
+        profile = patch('exp_runtime.shs.content.NATIVE_SHA256', digest(FAKE_NATIVE))
         profile.start()
         self.addCleanup(profile.stop)
         self.episode = archive({1: metadata(), 25001: program(0x33).to_bytes()})
@@ -165,7 +165,7 @@ class LibraryMenuTests(unittest.TestCase):
         self.assertIn('Invalid player preferences', invalid.warning)
 
     def test_translated_selectors_and_read_only_cli_title_override(self):
-        from shs_runtime.cli import main
+        from exp_runtime.cli import main
         english = self.library.episodes[0]
         self.assertEqual(self.library.select('École')['id'], english['id'])
         state = MenuState(self.library)
@@ -196,7 +196,7 @@ class ApplicationTests(unittest.TestCase):
         self.root = Path(temporary.name)
 
     def make_app(self, library=False):
-        from shs_runtime.application import Application
+        from exp_runtime.application import Application
         path = self.root / 'library'
         if library:
             source = Path('.shs-library').resolve()
@@ -301,7 +301,7 @@ class ApplicationTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content is unavailable')
     def test_added_episode_appears_in_play_before_and_after_restarting(self):
-        from shs_runtime.application import Application
+        from exp_runtime.application import Application
         app = self.make_app(library=True)
         episode = self.root / 'added.exp'
         episode.write_bytes(archive({1: metadata('An imported story'), 25001: program(0x33).to_bytes()}))

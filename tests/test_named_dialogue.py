@@ -7,31 +7,32 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from shs_runtime.engine import EngineAction
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.vm import VMError
+from exp_runtime.engine import EngineAction
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.vm import VMError
 from test_label_layout import authored_dialogue
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
 
-def resources(speaker='The $GROUP', text='We agree with $PLAYER.', *, dynamic=False, extra=()):
+def resources(speaker='The $GROUP', text='We agree with $PLAYER.', *, dynamic=False, extra=(),
+              service=76, prefix=()):
     words, refs = text_words(speaker, text)
-    args = (*refs, *extra)
-    call = ([(0x1a, a) for a in args] + [(0x20, len(args)), (0x1e, 76)]
-            if dynamic else host_call(76, *args))
+    args = (*prefix, *refs, *extra)
+    call = ([(0x1a, a) for a in args] + [(0x20, len(args)), (0x1e, service)]
+            if dynamic else host_call(service, *args))
     r = Resources(program((0x1a, 77), *call, 0x21, (0x1f, 0xfe02), 0x33, words=words))
     layout = authored_dialogue()
     r.dialogue_layout = lambda: layout
     return r
 
 
-def sequence():
+def sequence(*, service=76, prefix=()):
     words, refs = text_words('A question.', 'The group', 'Yes!', 'Another group',
                             'We agree.', 'A reply.')
     r = Resources(program(*host_call(27, 100), *host_call(13, refs[0], 1),
-                          *host_call(89), *host_call(76, refs[1], refs[2]),
-                          *host_call(76, refs[3], refs[4]), *host_call(13, refs[5], 1),
+                          *host_call(89), *host_call(service, *prefix, refs[1], refs[2]),
+                          *host_call(service, *prefix, refs[3], refs[4]), *host_call(13, refs[5], 1),
                           0x33, words=words))
     layout = authored_dialogue()
     r.dialogue_layout = lambda: layout
@@ -146,11 +147,11 @@ class NamedDialogueTests(unittest.TestCase):
         self.assertEqual(s.pending.request.args, (77, 0))
 
     def test_shared_transition_draw_occurs_once_after_the_last_dialogue_page(self):
-        for service in (13, 65, 76):
+        for service in (13, 15, 65, 76):
             for transition in (0, 3, 20):
                 with self.subTest(service=service, transition=transition):
                     words, refs = text_words('A group', 'Many words in this reply. ' * 20)
-                    args = {13: (refs[1], -1), 65: (-1, refs[1], 0), 76: tuple(refs)}[service]
+                    args = {13: (refs[1], -1), 15: (-3, *refs), 65: (-1, refs[1], 0), 76: tuple(refs)}[service]
                     r = Resources(program(*host_call(16, transition), *host_call(service, *args),
                                           0x21, (0x1f, 0xfe01), words=words))
                     layout = authored_dialogue()
@@ -217,8 +218,8 @@ class NamedDialogueTests(unittest.TestCase):
     def test_original_reported_frame_renders_and_reaches_the_following_coach_and_team_lines(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as library:
             s = Session(library.open_episode('Football Star'), start_script=25011)

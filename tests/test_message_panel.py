@@ -6,10 +6,10 @@ import os
 from pathlib import Path
 import unittest
 
-from shs_runtime.engine import EngineAction
-from shs_runtime.message_panel import MessagePanel
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.vm import VMError
+from exp_runtime.engine import EngineAction
+from exp_runtime.message_panel import MessagePanel
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.vm import VMError
 from test_runtime import Resources, host_call, text_words
 from test_vm import program
 
@@ -133,8 +133,8 @@ class MessagePanelTests(unittest.TestCase):
     def test_original_reported_call_renders_and_continues_to_word_game(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as lib:
             r = lib.open_episode('Football Star')

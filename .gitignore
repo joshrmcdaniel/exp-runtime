@@ -23,6 +23,8 @@ dist/
 *.shs-auto.json
 .shs-library/
 .shs-import-*/
+.exp-import-*/
+.exp-library/
 /library/
 /Episodes/
 /extract/

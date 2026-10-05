@@ -7,8 +7,8 @@ import sys
 import tempfile
 import unittest
 
-from shs_runtime.content import ContentError
-from shs_runtime.trace import trace_archive
+from exp_runtime.content import ContentError
+from exp_runtime.trace import trace_archive
 from test_content import archive, metadata
 from test_vm import program
 
@@ -44,7 +44,7 @@ class TraceTests(unittest.TestCase):
             trace_archive(self.path)
 
     def test_installed_module_traces_from_an_unrelated_directory(self):
-        result = subprocess.run([sys.executable, '-m', 'shs_runtime', 'trace', str(self.path)],
+        result = subprocess.run([sys.executable, '-m', 'exp_runtime', 'trace', str(self.path)],
                                 cwd=self.root, text=True, capture_output=True, check=True)
         trace = json.loads(result.stdout)
         self.assertEqual(trace['scene'], 25002)
@@ -53,7 +53,7 @@ class TraceTests(unittest.TestCase):
 
     def test_invalid_cli_input_returns_a_concise_error(self):
         self.path.write_bytes(b'authored malformed archive')
-        result = subprocess.run([sys.executable, '-m', 'shs_runtime', 'trace', str(self.path)],
+        result = subprocess.run([sys.executable, '-m', 'exp_runtime', 'trace', str(self.path)],
                                 cwd=self.root, text=True, capture_output=True)
         self.assertEqual(result.returncode, 2)
         self.assertIn('Not a CSPUD EXP archive', result.stderr)

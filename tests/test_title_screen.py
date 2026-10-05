@@ -9,10 +9,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-from shs_runtime.atlas import AtlasFont
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.title_screen import TitleScreen, title_labels
-from shs_runtime.ui_assets import Rect
+from exp_runtime.atlas import AtlasFont
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.title_screen import TitleScreen, title_labels
+from exp_runtime.ui_assets import Rect
 from test_runtime import Resources, host_call, text_words
 from test_vm import program
 
@@ -159,7 +159,7 @@ class TitleRendererTests(unittest.TestCase):
 
     def test_authored_atlas_pixels_wipe_background_fade_and_subtitle_scale(self):
         import pygame
-        from shs_runtime.desktop_title import TitleRenderer
+        from exp_runtime.desktop_title import TitleRenderer
         metrics, images = {}, {}
         for asset, height in ((528, 33), (530, 23)):
             images[asset] = pygame.Surface((8, height), pygame.SRCALPHA)
@@ -201,8 +201,8 @@ class TitleRendererTests(unittest.TestCase):
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content is absent')
     def test_original_week_and_episode_intro_render_pause_resize_and_saved_pixels(self):
         import pygame
-        from shs_runtime.content import ContentError, ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentError, ContentLibrary
+        from exp_runtime.desktop import Desktop
         with ContentLibrary(Path('.shs-library')) as library:
             checked = 0
             for episode in ('Football Star', 'The_New_Girl.exp'):

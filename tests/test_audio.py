@@ -7,9 +7,9 @@ import unittest
 from unittest.mock import Mock, patch
 import wave
 
-from shs_runtime.audio import MusicCue, music_cue
-from shs_runtime.content import ContentError
-from shs_runtime.runtime import Session
+from exp_runtime.audio import MusicCue, music_cue
+from exp_runtime.content import ContentError
+from exp_runtime.runtime import Session
 from test_runtime import Resources, host_call
 from test_vm import program
 
@@ -26,7 +26,7 @@ class MusicCueTests(unittest.TestCase):
 @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is not installed')
 class MusicPlaybackTests(unittest.TestCase):
     def make_ui(self, service=80, music=8202):
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
         self.addCleanup(pygame.quit)
@@ -154,11 +154,12 @@ class MusicPlaybackTests(unittest.TestCase):
                         music.unpause.assert_not_called()
 
     def test_live_main_menu_resume_keeps_the_stream_and_restart_loads_a_new_one(self):
-        from shs_runtime.application import Application
+        from exp_runtime.application import Application
         ui, resources = self.make_ui()
         resources.record['id'] = 'authored-episode'
         # Exercise application lifecycle without original menu art or writes.
         app = Application.__new__(Application)
+        app.selected_game = 'shs'
         app.game, app.selected, app.audio, app.active = ui, resources.record['id'], True, True
         app.window = ui.window
         app.state = Mock(music=True, sound=True)
@@ -242,7 +243,7 @@ class MusicPlaybackTests(unittest.TestCase):
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user library is not present')
     def test_original_apk_contains_and_plays_every_redirected_track(self):
         import pygame
-        from shs_runtime.content import ContentLibrary
+        from exp_runtime.content import ContentLibrary
         ui, _ = self.make_ui()
         pygame.mixer.init()
         with ContentLibrary(Path('.shs-library')) as lib:

@@ -5,8 +5,9 @@ SHS Runtime was separated from the `exp-decoder-python` research project on
 tests, build tools and specifications developed there. The inherited MIT
 license and Josh Mcdaniel's copyright notice remain in [LICENSE](../LICENSE).
 
-The standalone package is named `shs_runtime`, with `shs` and `shs-tool` entry
-points. The original checkout retains the older heuristic AST parser, Ren'Py
+The project is now EXP Runtime, with package `exp_runtime` and `exp-runtime` /
+`exp-tool` entry points. `shs` and `shs-tool` remain compatibility aliases.
+The original checkout retains the older heuristic AST parser, Ren'Py
 exporter, conversion attempts, local assets and raw native research output.
 This project has no dependency on that directory or its Python environment.
 
@@ -15,6 +16,14 @@ recompile or execute the original ARM game executable. The fidelity target is
 the reported identical original iOS/Android interface; Android 1.0.9 provides
 the available native code and asset reference. Unknown platform differences
 remain explicit rather than being assumed equivalent.
+
+Cause of Death uses its own supplied iOS executable as the reference for
+game-specific contracts; see [COD.md](COD.md). Its native decompilations and
+original assets also remain private research inputs.
+
+The [kiwi fruit app logo](../src/exp_runtime/assets/kiwi.svg) was drawn for
+EXP Runtime and is covered by this project's MIT license. It is independent
+of the original games' artwork. Native app icons are generated from this SVG.
 
 ## Evidence notes
 

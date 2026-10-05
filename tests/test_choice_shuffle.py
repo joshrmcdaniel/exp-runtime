@@ -4,8 +4,8 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from shs_runtime.engine import EngineAction, EngineState
-from shs_runtime.runtime import SaveError, Session
+from exp_runtime.engine import EngineAction, EngineState
+from exp_runtime.runtime import SaveError, Session
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -165,7 +165,7 @@ class ChoiceShuffleTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content required')
     def test_both_new_girl_versions_recover_the_reported_scene_and_continue(self):
-        from shs_runtime.content import ContentLibrary
+        from exp_runtime.content import ContentLibrary
 
         dispatch = EngineState.dispatch
         def old_dispatch(engine, vm, **kwargs):

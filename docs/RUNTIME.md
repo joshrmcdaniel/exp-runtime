@@ -1,6 +1,8 @@
 # Compatible runtime and user content
 
-Revision: 2026-10-04. This is an experimental implementation of the SHS engine.
+Revision: 2026-10-05. This is an experimental implementation of the shared SHS/CoD EXP engine.
+CoD-specific support and limits are in [COD.md](COD.md); the fidelity notes
+below describe the SHS reference.
 It executes original KiWi instructions and reuses original assets. It currently
 plays the opening of **The New Girl**, including real branching choices and its
 first mini game, and implements timed words, word/picture grids and football; it
@@ -65,7 +67,7 @@ and the corresponding comparison passes.
 
 ## Distribution model
 
-Each player supplies their own **SHS Android 1.0.9 APK** or **compatible SHS IPA**
+Each player supplies their own **SHS Android 1.0.9 APK** or **compatible SHS IPA**, or **CoD IPA**,
 and any additional **episode EXP files**. The package provides the base resource
 bank, available audio, and bundled stories. Additional episode files remain necessary for their
 respective stories. There are no game downloads or dependencies on this
@@ -76,13 +78,13 @@ The reusable program ships separately from that content. This is the same
 user-supplied-content model discussed for game recompilation projects; this
 implementation is a **compatible engine with a KiWi interpreter**, rather
 than a static recompilation of the ARM executable. APK native code is used
-only to identify the supported Android profile. IPA import uses the SHS bundle
+only to identify the supported Android profile. IPA import uses the game bundle
 identifier and required assets, with informational version/build metadata.
 Neither package's native code is executed.
 
 `MANIFEST.in` explicitly selects runtime source and authored documentation for
 the source distribution. Setuptools package discovery is restricted to
-`src/shs_runtime`. Original APKs/IPAs/EXPs, extracted art/audio, decompiled native C,
+`src/exp_runtime`. Original APKs/IPAs/EXPs, extracted art/audio, decompiled native C,
 generated Ren'Py games, and saved progress are excluded from Python packages
 and executable builds. Players can clone the engine's source and build their
 own executable before supplying any game content. See
@@ -96,33 +98,34 @@ created under custom directory names must likewise remain local.
 From a source checkout:
 
 ```sh
-uv run --locked --extra desktop shs
+uv run --locked --extra desktop exp-runtime
 ```
 
-`shs` (or `shs-tool play` without `--episode`) opens the main menu and, on first
-launch, a file picker for the player's APK or IPA. Options accepts additional episode
-files or folders. Drag-and-drop also works, including multiple files together.
-The original menu art/glyphs come from the supplied package. See [MAIN_MENU.md](MAIN_MENU.md)
-for recovered native state/asset contracts, desktop adaptations and executable
-build instructions.
+`exp-runtime` (or `exp-tool play` without `--library` / `--game`) opens the
+game chooser. Choose SHS or Cause of Death, then import its assets or open its
+existing library. Options accepts additional episodes for the selected game;
+drag-and-drop also works. **Options → Switch Game** checkpoints the current
+story and returns to the chooser. No assets or saved progress cross game
+libraries. The `shs` and `shs-tool` commands remain compatibility aliases.
+See [MAIN_MENU.md](MAIN_MENU.md) for launcher migration and native menu evidence.
 
 Command-line imports and direct episode launch remain supported:
 
 ```sh
-uv run --locked shs-tool import --apk /path/to/game.apk --episodes /path/to/Episodes --library /path/to/my-shs-library
-uv run --locked shs-tool list --library /path/to/my-shs-library
-uv run --locked --extra desktop shs-tool play --library /path/to/my-shs-library --episode "The_New_Girl.exp"
+uv run --locked exp-tool import --apk /path/to/game.apk --episodes /path/to/Episodes --library /path/to/my-shs-library
+uv run --locked exp-tool list --library /path/to/my-shs-library
+uv run --locked --extra desktop exp-tool play --library /path/to/my-shs-library --episode "The_New_Girl.exp"
 ```
 
-For an IPA, replace `--apk /path/to/game.apk` with `--ipa /path/to/game.ipa`.
+For an SHS IPA, replace `--apk /path/to/game.apk` with `--ipa /path/to/game.ipa`.
 Optionally add `--music-apk /path/to/game.apk` to supply its missing original
 music. For an existing IPA library, use **Options → Content Library → Add APK
-Music** or `shs-tool add-music --apk /path/to/game.apk --library /path/to/library`.
+Music** or `exp-tool add-music --apk /path/to/game.apk --library /path/to/library`.
 The IPA remains the base package; its assets and installed original fonts take
 precedence. See [optional APK music](IPA.md#optional-apk-music) for the exact scope.
 
 Without uv, install with `python -m pip install -e '.[desktop]'`, then use
-`shs-tool` from that environment. Decoder/headless tools do not require pygame.
+`exp-tool` from that environment. Decoder/headless tools do not require pygame.
 
 `--episodes` accepts multiple files or directories and recursively finds EXP
 files, including uppercase `.EXP`. It is optional when using only the episodes
@@ -132,16 +135,19 @@ screen; the batch is validated before updating the manifest. Saves can be copied
 between libraries with identical content hashes. IPA dialogue checkpoints also
 require matching font metrics; see [IPA fonts](IPA.md#fonts). Imports preserve supplied files.
 
-Import/list default to `.shs-library` in the current working directory. The
-player uses an existing local library in a source checkout, otherwise per-user
-application data. A frozen executable always uses per-user application data;
-it never stores content beside the executable. `--library` overrides the path.
+CLI import requires an explicit `--library` destination. `list` retains the
+legacy `.shs-library` default; supply `--library` for another game or location.
+The launcher remembers a separate path for each game and otherwise uses
+`EXP Runtime/libraries/shs` or `EXP Runtime/libraries/cod` in application data.
+It discovers prior `SHS Runtime` locations and a source checkout's `.shs-library`
+without moving them. An explicit `--library` opens that library directly;
+`--game shs|cod` opens a game directly and checks that supplied assets match.
 `--episode` accepts an exact title from any of the five metadata slots, filename, or unique hash prefix printed by
 `list`. Starting with `play --episode` begins a fresh session. To resume the
 newer automatic/manual checkpoint:
 
 ```sh
-uv run --locked shs-tool play --library /path/to/my-shs-library --episode "The_New_Girl.exp" --resume
+uv run --locked exp-tool play --library /path/to/my-shs-library --episode "The_New_Girl.exp" --resume
 ```
 
 `--load /path/to/progress.shs-save.json` loads a specific save instead.
@@ -150,7 +156,7 @@ saves are not supported.
 
 **Options → Episode title language** selects English, French, Italian, German
 or Spanish titles where supplied, with English/filename fallback for empty
-slots. `shs-tool list` follows the saved preference; `--title-language en|fr|it|de|es`
+slots. `exp-tool list` follows the saved preference; `--title-language en|fr|it|de|es`
 overrides it without writing preferences. Search accepts all supplied titles.
 The inspected game files contain English story text; selecting a title slot
 does not translate dialogue or menus. Saves and live progress stay compatible.
@@ -209,8 +215,9 @@ identities. All filesystem paths in the manifest are relative, content-derived
 paths, so the entire library can be moved to another directory or computer.
 
 The optional manifest field `episode_catalog` retains original English category
-metadata imported from a user's `shs_options.sav`. It supplies season and story
-group headers without changing EXP identities or saves. Folder/EXP imports
+metadata imported from a user's `shs_options.sav` or CoD's `cod_options.sav`.
+It supplies season, volume and story group headers without changing EXP
+identities or saves. Folder/EXP imports
 discover this optional sidecar; users can also add it through the episode
 picker. The native envelope, normalized metadata schema, matching and fallback
 rules are in [EPISODE_CATALOG.md](EPISODE_CATALOG.md).
@@ -304,14 +311,18 @@ IDs take priority, including its scripts in the 25000 range. Playback starts at
 last scheduled script. Registers and complete stack backing survive that load,
 while data and PC/SP/FP reset according to the core VM contract.
 
-## Runtime save schema, version 13
+<a id="runtime-save-schema-version-13"></a>
+<a id="runtime-save-schema-version-14"></a>
+<a id="runtime-save-schema-version-15"></a>
+
+## Runtime save schema, version 16
 
 This is a new format for the reimplementation. No pickle, object deserialization,
 or original executable code is used. JSON fields are:
 
 | Field | Contract |
 | --- | --- |
-| `format`, `version` | `"shs-runtime-save"`, `13` |
+| `format`, `version` | `"exp-runtime-save"`, `16` |
 | `content` | `profile`, `apk_sha256`, `episode_sha256`; must exactly match loaded content |
 | `scene` | Unsigned current script resource ID |
 | `script_sha256` | Hash of the losslessly encoded current program |
@@ -320,6 +331,22 @@ or original executable code is used. JSON fields are:
 | `pending` | Null, or `{name, details}` for the suspended screen/service or terminal episode exit |
 | `remaining_ms` | Null for no timer; otherwise the remaining active choice time in milliseconds. Zero is still pending; the next positive active tick expires it. The visible circular timer derives from this value. |
 | `scene_loads` | Nonnegative number of scheduled script loads |
+
+The selected game and native `app_version` are derived from the validated
+library, not serialized engine fields. CoD service 70 selector 6 reads
+`CFBundleVersion` from the retained IPA's `Info.plist` and writes dynamic string
+slot 0; that mutable slot is saved normally. Missing native version metadata
+keeps the query pending. Older CoD stops at services 70, 94, 96 and 100 resume their
+original call and continuation without replaying previous choices or random
+draws. Their outgoing portrait is recovered from the saved panel when needed.
+These handlers do not change the version-16 save schema.
+
+SHS stops at 14, 15 and 21 also resume their retained calls. Services 14/21
+complete with the verified native zero result. Service 15 presents named
+dialogue and retains its complete frame through paging and acknowledgement;
+save validation honors its optional negative prefix. Loading an older stop
+recovers the outgoing portrait before continuing without replaying earlier
+bytecode or random draws. These additions also keep save version 16.
 
 The `vm` object contains `pc`, `sp`, `fp`, `a`, `b`, `result`, `data`, `stack`,
 `pending`, `steps_executed`, `opcode_counts`, and `recent_pcs`.
@@ -357,7 +384,8 @@ A pending dialogue includes the requested `character_id`, `visible_character_id`
 visible `speaker`, `expression`, raw/displayed text, those mode/palette fields,
 and `page_start` / `page_end`, as Latin-1 source-byte offsets. The VM stays
 suspended while these offsets advance. Page layout is derived from the same
-user-supplied APK; current-version saved page extents are checked on load.
+user-supplied library and selected fonts; current-version saved page extents
+are checked on load.
 The pending `speaker` precedes the native display-spacing rewrites; the panel's
 retained `speaker` includes them. Neither changes the character's stored name.
 
@@ -458,7 +486,11 @@ and reflow the remaining page; version 1 still starts at zero as described
 above. Saved VM frames, previous choices, random streams and reveal clocks
 are not replayed or restarted. No APK/episode reimport is needed. The generic
 ink-bounds correction is derived drawing data, never serialized back into the
-native font state. See the recovered rules and explicit compatibility limit in
+native font state. Bounding speaker ink to the selected normal/tall header
+therefore does not itself change font history or page extents. Game-specific
+text colors likewise affect only drawing. Version 16 additionally corrects
+outline-font measurement and body regions, which can change IPA page ends.
+See the recovered rules and explicit compatibility limit in
 [UI_FIDELITY.md](UI_FIDELITY.md#speaker-labels-and-persistent-font-state).
 
 Version 11 adds `engine.title_screen`, holding service 8's active `elapsed_ms`
@@ -490,6 +522,30 @@ answers. Acknowledgement executes the verified branch and its dialogue callback
 once, then continues the remaining story. It does not mark the episode ended;
 only the script's original services 7/63 do that. See the
 [offline survey contract](STORY_SERVICES.md#offline-surveys-service-9).
+
+Version 14 introduced a separate IPA dialogue layout, since superseded by the
+owner's shared v0.1.3 presentation reference. It added no fields; its IPA
+checkpoints stored empty `fonts` and `basis` maps and reflowed older IPA pages.
+
+Version 15 restores the shared dialogue layout and speaker-font history for
+both games and package types. No fields are added. Older IPA dialogue saves
+preserve `page_start`, VM state and reveal clocks, then derive `page_end`
+once using the shared layout. The current speaker is prepared from the saved
+`basis` for pre-v14 checkpoints, preventing the name from advancing twice.
+Version-14 IPA saves have no earlier speaker history to recover, so migration
+initializes it and prepares the current name once. It never executes the
+pending VM call. Current-version pages and font history remain strictly
+validated; APK saves from version 10 onward retain their strict checks too.
+Version 16 uses verified CSFont title wrapping and ordinary body metrics
+within the shared renderer. The title's 8/40-pixel extension is no longer
+counted as IPA body capacity. No JSON fields are added. Version-15 IPA saves
+keep both name-history banks and validate them normally; only `page_end` is
+recomputed from the retained `page_start`. Pre-v15 IPA saves also use the
+earlier history migration above. VM memory, pending arguments, random state,
+panel state and animation clocks remain unchanged. Version-16 page ends are
+strictly validated; APK version-10+ validation is unchanged.
+Versions 1–15 and the legacy `shs-runtime-save` marker remain accepted.
+See [IPA dialogue](IPA.md#dialogue-text-placement) for geometry and font limits.
 
 Saves stopped at unsupported service 4 now validate the retained choice builder
 and shuffle argument, then perform the native shuffle once using the saved

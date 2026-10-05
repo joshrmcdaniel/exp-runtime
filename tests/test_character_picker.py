@@ -5,10 +5,10 @@ import os
 from pathlib import Path
 import unittest
 
-from shs_runtime.character_picker import CharacterPicker, POSITIONS
-from shs_runtime.content import ContentLibrary
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.vm import VMError
+from exp_runtime.character_picker import CharacterPicker, POSITIONS
+from exp_runtime.content import ContentLibrary
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.vm import VMError
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -140,7 +140,7 @@ class HomecomingQueenTests(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is not installed')
     def test_original_art_release_input_resize_and_paused_motion(self):
         os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
         import pygame
         self.addCleanup(pygame.quit)
         s = self.reach_picker()

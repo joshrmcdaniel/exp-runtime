@@ -9,8 +9,8 @@ from zipfile import ZipFile
 
 from PIL import Image
 
-from shs_runtime.content import NATIVE_MEMBER, NATIVE_SHA256, PROFILE, ContentError
-from shs_runtime.fonts import BitmapFont
+from exp_runtime.content import NATIVE_MEMBER, NATIVE_SHA256, PROFILE, ContentError
+from exp_runtime.fonts import BitmapFont
 
 
 def audit(apk_path):

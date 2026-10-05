@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 from zipfile import ZipFile
 
-from shs_runtime.fonts import BitmapFont, FontError, TextStyle, layout_text
+from exp_runtime.fonts import BitmapFont, FontError, TextStyle, layout_text
 
 
 def descriptor():
@@ -123,7 +123,7 @@ class AtlasDrawingTests(unittest.TestCase):
     def test_actual_atlas_bounds_colors_alpha_and_clipping(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.desktop_text import BitmapTextRenderer
+        from exp_runtime.desktop_text import BitmapTextRenderer
 
         pygame.display.init()
         pygame.display.set_mode((30, 30))

@@ -3,12 +3,12 @@ import json
 from pathlib import Path
 import unittest
 
-from shs_runtime.engine import EngineAction, EngineState, PanelState
-from shs_runtime.dialogue_animation import DialogueAnimation
-from shs_runtime.minigames import NativeRandom
-from shs_runtime.runtime import Session
-from shs_runtime.scene_badge import SceneBadge
-from shs_runtime.vm import KiwiVM
+from exp_runtime.engine import EngineAction, EngineState, PanelState
+from exp_runtime.dialogue_animation import DialogueAnimation
+from exp_runtime.randomness import NativeRandom
+from exp_runtime.runtime import Session
+from exp_runtime.scene_badge import SceneBadge
+from exp_runtime.vm import KiwiVM
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -88,7 +88,7 @@ class PanelLifecycleTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content unavailable')
     def test_original_football_star_scene_25013_closes_and_halts(self):
-        from shs_runtime.content import ContentLibrary
+        from exp_runtime.content import ContentLibrary
         with ContentLibrary(Path('.shs-library')) as library:
             session = Session(library.open_episode('Football Star'), start_script=25013)
             session.engine.random = NativeRandom(1)

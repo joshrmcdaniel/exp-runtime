@@ -3,9 +3,9 @@ import struct
 import unittest
 from dataclasses import replace
 
-from shs_runtime.atlas import AtlasFont, SpriteAtlas
-from shs_runtime.content import ContentLibrary
-from shs_runtime.ui_assets import Raster, UIAssetError
+from exp_runtime.atlas import AtlasFont, SpriteAtlas
+from exp_runtime.content import ContentLibrary
+from exp_runtime.ui_assets import Raster, UIAssetError
 
 
 class AtlasTests(unittest.TestCase):

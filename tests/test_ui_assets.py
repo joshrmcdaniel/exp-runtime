@@ -3,7 +3,7 @@ import struct
 import unittest
 from zipfile import ZipFile
 
-from shs_runtime.ui_assets import ImagePack, LayoutBank, Raster, Rect, UIAssetError
+from exp_runtime.ui_assets import ImagePack, LayoutBank, Raster, Rect, UIAssetError
 
 
 def image_pack(marker=-1, transforms=(), count=1, pixels=b'\x03\x02' + b'\xff\x01\x02\x03' * 6):

@@ -11,6 +11,14 @@ its native timer, name-entry and football differences, installed-font lookup
 and user-requested system-default fallback. The Android bitmap-font evidence
 below does not establish identical iOS font metrics or rasterization.
 
+As of 2026-10-05, the owner selected **v0.1.3's SHS dialogue display** as the
+best available presentation reference for both SHS and CoD. Their APK/IPA
+adapters supply artwork and fonts to the same dialogue layout and renderer.
+The renderer remains shared. Later original screenshots and Ghidra verification
+established native outline-font title/body rules within that skin; see
+[IPA dialogue](IPA.md#dialogue-text-placement). The Android font evidence below
+is retained for bitmap playback, not imposed on the IPA's CSFont metrics.
+
 ## Confirmed clues in the supplied APK
 
 `assets/Assets/fonts/` contains **18 bitmap-font sets**. Every set has a text
@@ -242,19 +250,45 @@ native rules with the current imported-font renderer still permits overlaps.
 Nominal name height is 16 although visible glyph rectangles can exceed 30;
 retained spacing can also lower a later short name into the dialogue. After
 native layout, `fit_speaker_ink` separates overlapping rows, shrinks ink only
-when it exceeds the space beside the portrait, and minimally translates it
-inside that space and above the body. It uses glyph bounds for every name,
-with no additional character-name exceptions. The body boundary accounts for
-glyphs anywhere in the dialogue, keeping the name fixed across page turns.
-This changes drawing only: it does not feed back into native font history,
-body rectangles, pagination, VM arguments, results or random state.
+when it exceeds the selected header's width or height. Bitmap-label ink is
+attached to the bottom of the available header; outline-font titles retain
+their native position unless they exceed the bounds. The selected normal/tall
+node in layout 17 supplies the vertical region (31/63 high in the supplied
+skins), shortened only where body glyphs intrude. Width is bounded by the
+skin's left/right border frames, the viewport and the portrait.
+Glyphs and outlines are scaled together, including multiline names and larger
+fallback faces. The body boundary accounts for glyphs anywhere in the dialogue,
+keeping the name fixed across page turns.
+
+The later CoD promo shows "Det. Mal Fallon" over two lines straddling the top
+border. The intermediate 31-pixel-only guard prevented that presentation and
+was an overcorrection. The shared renderer now wraps outline-font titles at
+their native width, selects the normal/tall region, and keeps the body text in
+its own region; see [the native verification](IPA.md#dialogue-text-placement).
+This applies to every name in both iOS games. No promo/scene exception exists.
+
+The earlier fitter constrained only viewport width and the first body ink.
+It had no top/height limit and did not attach names to the actual box. CoD's
+Volume One poker sequence exposed both gaps: long names could exceed the
+box edge, and the subsequent name could float above it after a large-name
+transition. Comparing that renderer against itself with another asset adapter
+could not detect these problems. The general correction uses the same bounds
+for all games and fonts, without new character-name exceptions.
+The ink guard changes drawing only. The separate outline-font measurement
+correction can change header selection and body pagination; save version 16
+reflows old IPA pages without altering VM arguments, results or random state.
 
 Authored tests cover all presentation modes and font themes, long and multiline
 names, preceding font-state changes, saved pages, invalid state and migration.
 An optional local-content check covers Football Star's portrait-bearing roster
 and a parents-then-teachers sequence using the player's original fonts.
 Rendered parent/teacher checkpoints and save restoration were checked locally.
-These checks establish non-overlap in this renderer; exact native pixel
+The optional CoD opening check includes the poker cast, the later Captain and
+actual rendered name-layer bounds. The owner's original CoD screenshots show
+titles attached to the box's top border and corroborate its separate palette;
+see [COD.md](COD.md#native-ui-and-audio-bindings). Tests now require bounded title height
+and box attachment in addition to non-overlap. These checks establish bounded
+drawing in this renderer; exact native pixel
 equivalence still requires comparison with a running original game. Shared
 kerning and measurements performed by other UI paths, such as `FUN_000d9038`,
 are not yet included in the dialogue font-history model.
@@ -391,6 +425,11 @@ rules below; it does not assign an NPC name or switch to narration. Its
 also describes the transition callback and saved-stop recovery.
 
 ### Box, portrait and text placement
+
+The following geometry is the **v0.1.3 bitmap-font dialogue reference**, using
+Android native evidence. IPA outline fonts use the same frame construction
+with their verified cap-height metrics and separate body region; see
+[IPA.md](IPA.md#dialogue-text-placement) for the implemented differences.
 
 `FUN_000aa0a0` measures ordinary dialogue at layout-17 node 8, currently
 `(37,304,246,98)`. With nominal body height `h=14`, gap `g=7`, and measured

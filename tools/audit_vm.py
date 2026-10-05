@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import sys
 
-from shs_runtime.trace import trace_archive
+from exp_runtime.trace import trace_archive
 
 
 def main():

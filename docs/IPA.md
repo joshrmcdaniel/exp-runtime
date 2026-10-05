@@ -5,7 +5,7 @@ APK. Choose **Choose Game** during setup, drop the IPA onto the setup window,
 or run:
 
 ```sh
-uv run --locked shs-tool import --ipa /path/to/game.ipa --library /path/to/ios-library
+uv run --locked exp-tool import --ipa /path/to/game.ipa --library /path/to/ios-library
 ```
 
 Add `--episodes /path/to/Episodes` for additional EXP files. The game package
@@ -27,14 +27,14 @@ Some original iOS music was downloaded separately and is absent from the IPA.
 To supply it locally, add an optional Android 1.0.9 APK:
 
 ```sh
-uv run --locked shs-tool import --ipa /path/to/game.ipa --music-apk /path/to/game.apk --library /path/to/ios-library
+uv run --locked exp-tool import --ipa /path/to/game.ipa --music-apk /path/to/game.apk --library /path/to/ios-library
 ```
 
 For an existing IPA library, choose **Options → Content Library → Add APK
 Music**, drop one APK onto the menu, or run:
 
 ```sh
-uv run --locked shs-tool add-music --apk /path/to/game.apk --library /path/to/ios-library
+uv run --locked exp-tool add-music --apk /path/to/game.apk --library /path/to/ios-library
 ```
 
 During first setup, dropping one IPA and one APK together also selects the IPA
@@ -116,19 +116,25 @@ The inspected layout bank is identical to the Android layout bank. Native
 relationship icon selection is at `0007d1c0`. Unmapped Android-only exports
 are not guessed from neighboring numeric IDs.
 
-IPA libraries use manifest version 2, profile `shs-ios-assets-v1`, and an `ipa`
+Legacy SHS IPA libraries use `shs-content-library` manifest version 2, profile `shs-ios-assets-v1`, and an `ipa`
 record with `file`, `sha256` and informational `app` metadata. Bundled episode
 records use `ipa_member`; copied EXPs retain `file`. Save content identity is
 `profile`, `ipa_sha256`, and `episode_sha256`. The complete archive hash is
 checked on open, so repacking changes save identity even when assets match.
 Existing version-1 Android libraries and their save identities are preserved.
 
-Adding APK music upgrades the manifest to version 3, with a `music_apk` record
+Adding APK music upgrades a legacy manifest to version 3, with a `music_apk` record
 containing `file`, `sha256` and `native_sha256`. Both the IPA and supplemental
 APK archives are checked on open. This presentation-only supplement is excluded
 from save identity so existing IPA checkpoints remain compatible. Older runtime
 versions reject the version-3 library rather than silently ignoring its music.
 The source profile, primary `ipa` record and episode records stay unchanged.
+
+New EXP Runtime imports use `format: exp-content-library`, `version: 1`,
+`game: shs` and the same `shs-ios-assets-v1` profile and source records.
+Optional `music_apk` is supported in this schema without a version change.
+Legacy versions 1–3 still load; their content/save identities stay unchanged.
+CoD has separate import and resource bindings described in [COD.md](COD.md).
 
 ## Fonts
 
@@ -149,6 +155,14 @@ fallback behavior. Asset import itself does not require installed fonts.
 Pillow/FreeType renders these faces into an in-memory glyph atlas, cached per
 open library. Font files and generated glyph images are not copied into the
 application or its distribution. Font data is never fetched from a server.
+Advances are measured in the font's design units, then scaled to the requested
+point size. Measuring each glyph at its final pixel size with Pillow BASIC
+rounded away fractional advances and changed wrap points. Cap height and
+descent come from the selected SFNT face, including TTC face selection. For
+older fonts without an OS/2 cap-height field, the H/O average reproduces the
+metrics observed with local CoreGraphics for Arial Rounded, Trebuchet and
+the supplied Pajama Hip. These are font metadata; dialogue uses the shared
+v0.1.3 nominal line heights and gaps described below, not cap-height spacing.
 
 This rendering path has not been proven pixel-identical to iOS CoreGraphics.
 Fallback faces can change wrapping, pagination and name-width limits. Save
@@ -156,6 +170,78 @@ restoration validates saved dialogue and speaker layout, so moving an IPA
 save to a system with different font metrics can fail that validation; use the
 same fonts to resume such a checkpoint. Identical-font save/restore was tested.
 The original Android bitmap-font path still reads its supplied atlas pixels.
+
+## Dialogue text placement
+
+Both games use the common `DialogueLayout` / `DialogueRenderer` and the
+v0.1.3 SHS skin (source reference `dd7e388`). Each adapter supplies its own
+artwork and fonts. The owner's later original screenshots, including the
+[CoD promo](COD.md), disproved the compact-header correction: long names
+must be allowed to wrap and straddle the box border. Native verification
+also established different bitmap/outline text rules within the shared skin.
+There is no separate IPA dialogue layout class or scene/name override.
+
+For outline fonts, `outline_speaker_label` applies these rules in both games:
+
+- Measure the original name at the normal title region's width, using the
+  face's **cap height** and line gap **8**. If wrapped height exceeds the
+  region, select its tall counterpart. The supplied normal/tall regions are
+  **31/63** high and **194** wide with a portrait (286 without one).
+- Left-portrait title nodes are `0x2e/0x25`, right `0x4c/0x43`, and no-portrait
+  `0x6a/0x61`. The frame extension is **8/40**. No Android width expansion,
+  extra -40 Y offset, retained line-count decision or 0.9 scale applies.
+- Left portraits add 1 to X and use line indents `(0,20)`; tall names align
+  left, short names align right, with -15 X for unwrapped width below 135.
+  Right portraits subtract 2 from X, use `(0,5)`, align left, and add 15 X
+  below that width threshold. Names without a portrait align centrally.
+  All three modes center line boxes vertically in the selected title region.
+- Names start at the original font size (26-point SHS Pajama Hip / CoD
+  Verdana Bold Italic). The shared ink guard separates overlapping raster
+  rows and fits only when complete glyphs/outlines exceed the selected
+  region, actual skin, portrait or body boundary. That guard is a desktop
+  compatibility measure; it does not imply exact CoreGraphics pixels.
+- Ordinary body text uses node 8 at **(37,304)**, width **246**, cap-height
+  line boxes, gap **10**, and portrait insets `(80,70,0,0)` (mirrored on the
+  right). The frame grows upward for a tall title; the text origin does not
+  move. Its draw height is the shared computed body height plus integer font
+  descent plus 3. The title's extension does not add body page capacity.
+
+The native evidence was rechecked through read-only Ghidra MCP on 2026-10-05:
+CoD / SHS `updateTitleBounds` at **00036adc / 0007ce08**; `animateTitleLayer`
+at **00036c48 / 0007e100**; `CSFont::drawTextInRegion` at **00003d68 /
+00008344**; and `animateTextLayer` at **000373e0 / 0007d628**. CoD's title
+indent tables at **0015ffd4 / 0015ffdc** contain `(0,20)` / `(0,5)`.
+CoD `CSFont::setFontSize` at **00003f14** derives cap height from the supplied
+font's design metrics. `SHSTextLayer::positionLayer:boundsPadding:` at
+**00047ed8** supplies clipping padding, not an extra title offset. The body
+position/size setup at **0003788a** keeps node 8's origin and adds descent + 3
+to the draw height. Some Objective-C calls truncate Ghidra's decompilation;
+their continuation was read in LLVM assembly and checked against the same
+bytes returned by Ghidra. No analysis repairs or remote HTTP calls were used.
+
+Android bitmap fonts retain the verified v0.1.3 nominal heights, persistent
+name-label branches, body width 260 and original pagination. Both font types
+use the same normal/tall header ink guard. Narration and animation retain the
+shared v0.1.3 behavior; narrator and complete animation parity remain separate
+fidelity limits. Original installed/bundled fonts still take precedence over
+system fallback. Native font rules do not establish pixel-identical rendering.
+
+Save version **16** reflows older IPA pages from their saved `page_start`.
+Version-15 checkpoints preserve and validate both name-history banks; earlier
+IPA saves use the existing history migration. The outline title renderer
+does not use Android's retained label dimensions, but those saved banks are
+kept for compatibility and validation. VM memory, arguments, randomness and
+reveal clocks are unchanged. Current page ends and APK version-10+ saves
+remain strictly validated. No reimport is needed.
+
+Authored tests cover normal/tall selection, full-size multiline names, all
+alignments, long-to-short transitions, substitute glyph bounds, page stability,
+body capacity independent of the header, and save migration. Optional original
+checks exercise both games; CoD's 150-screen opening covers the poker/captain
+sequence and tests actual raster bounds. Private comparison includes the exact
+promo dialogue and old checkpoints. Earlier tests comparing the renderer to
+itself through another font adapter did not establish native fidelity; their
+historical pixel equality is not a validation of the current implementation.
 
 ## Platform-specific UI
 

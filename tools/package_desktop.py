@@ -21,7 +21,7 @@ import zipfile
 TARGETS = ('windows-x64', 'linux-x64', 'macos-arm64', 'macos-x64')
 FORBIDDEN_SUFFIXES = {'.apk', '.ipa', '.exp', '.kiw', '.sav', '.c', '.asm'}
 FORBIDDEN_NAMES = {
-    'libshs09.so', 'surviving_hs', 'surviving_hs.app', 'res_generated',
+    'libshs09.so', 'surviving_hs', 'surviving_hs.app', 'cod.app', 'res_generated',
     'library.json', 'player.json', 'launcher.json',
     '.shs-library', 'episodes', 'extract', 'game-assets', 'original-screenshots',
     'converted_assets', 'debug_images', 'saves', 'renpy',
@@ -39,13 +39,13 @@ def host_target():
 
 
 def bundle_name(target):
-    return 'SHS Runtime.app' if target.startswith('macos-') else 'SHS Runtime'
+    return 'EXP Runtime.app' if target.startswith('macos-') else 'EXP Runtime'
 
 
 def executable(bundle, target):
     if target.startswith('macos-'):
-        return bundle / 'Contents' / 'MacOS' / 'SHS Runtime'
-    return bundle / ('SHS Runtime.exe' if target.startswith('windows-') else 'SHS Runtime')
+        return bundle / 'Contents' / 'MacOS' / 'EXP Runtime'
+    return bundle / ('EXP Runtime.exe' if target.startswith('windows-') else 'EXP Runtime')
 
 
 def audit_bundle(bundle):
@@ -56,8 +56,8 @@ def audit_bundle(bundle):
     for path in bundle.rglob('*'):
         relative = path.relative_to(bundle)
         name = path.name.lower()
-        if (name in FORBIDDEN_NAMES or path.suffix.lower() in FORBIDDEN_SUFFIXES
-                or name.startswith(('native-', '.shs-import-'))
+        if (name in FORBIDDEN_NAMES or (name == 'cod' and path.is_file()) or path.suffix.lower() in FORBIDDEN_SUFFIXES
+                or name.startswith(('native-', '.exp-import-'))
                 or name.endswith(('.shs-save.json', '.shs-auto.json', '-audit.json', '-trace.json'))):
             raise ValueError(f'Game content or research output found in app: {relative}')
         if path.is_symlink():
@@ -94,8 +94,8 @@ def package(root, target, label):
     output = root / 'dist' / 'downloads'
     output.mkdir(parents=True, exist_ok=True)
     suffix = '.tar.gz' if target.startswith('linux-') else '.zip'
-    destination = output / f'shs-runtime-{label}-{target}{suffix}'
-    with tempfile.TemporaryDirectory(prefix='shs-package-', dir=output) as temporary:
+    destination = output / f'exp-runtime-{label}-{target}{suffix}'
+    with tempfile.TemporaryDirectory(prefix='exp-package-', dir=output) as temporary:
         archive = Path(temporary) / destination.name
         if target.startswith('macos-'):
             # zipfile/shutil dereference links; ditto preserves the signed app's
@@ -120,7 +120,7 @@ def package(root, target, label):
 
 def smoke_test(archive, target):
     """Launch the extracted download from a separate working directory."""
-    with tempfile.TemporaryDirectory(prefix='shs-download-test-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='exp-download-test-') as temporary:
         stage = Path(temporary)
         if target.startswith('macos-'):
             subprocess.run(['ditto', '-x', '-k', str(archive), str(stage)], check=True)

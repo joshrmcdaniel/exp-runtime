@@ -106,8 +106,8 @@ Dispatcher `0009fe3c`, case `0x4c`, finds panel type 3 and calls
 The dispatcher resolves both strings with `0009f9fc`; `000aa028` writes the
 speaker at panel `+0x3c`, `000a9f84` writes dialogue at `+0x30`, and `000aaf84`
 starts the ordinary display. The host wait flag at `+0x84` retains the whole
-VM frame until the final callback. Service 15 shares this native display tail,
-but its separate argument-prefix form remains unsupported.
+VM frame until the final callback. SHS service 15 shares this native display
+tail, with the additional argument-prefix rule documented below.
 
 This is the shared group-speaker path used by Football Star at scene 25011,
 PC 4303 (byte offset 58996), with arguments `(20059,20064)`: speaker “The team”.
@@ -142,15 +142,41 @@ and resumes with zero, leaving UI result cells unchanged. This correction applie
 to ordinary services 13/65 as well as 76. Outgoing transition animation and
 native callback frame scheduling remain incomplete.
 
+### SHS service 15
+
+Service 15 uses the same explicit speaker, no-portrait presentation, text
+reveal, pagination and final callback as 76. If its first word is negative,
+that word is ignored and the following two references supply speaker and body.
+Otherwise the first two words are the references. Remaining words are ignored
+but stay in the pending frame and are removed on final acknowledgement. Even
+prefixes `-2` and `-3` do not add parentheses or backtick emphasis; those are
+service-13 rules, not service-15 rules.
+
+The Android branch at `000a1bd4` compares the first word with zero at
+`000a1c10`, chooses one-based indices `(1,2)` or `(2,3)`, and joins the
+service-76 display tail at `000a1460`. SHS iOS agrees: case `0006f8d8` sets
+speaker type 3, compares the first word at `0006f928`, selects its first text
+index at `0006f930`, and increments that index for the body at `0006f974`.
+Ghidra's pseudocode omits those iOS index arguments; the MCP assembly and raw
+bytes at `0006f918` confirm them. The Android bytes at `000a1c04` were checked
+as well. No separate iOS presentation is introduced.
+
+The imported SHS corpus contains 396 service-15 calls in 62 episodes, with
+four to seven frame words. All first words can be recovered from immediate
+pushes: 386 are nonnegative text references and ten are the `-3` prefix.
+The parser also accepts the native two-reference minimal forms and rejects
+incomplete or invalid text references without consuming the frame.
+
 ### Saves and verification
 
-No new save fields or version are needed: service 76 uses the existing panel,
+No new save fields or version are needed: services 15/76 use the existing panel,
 speaker-font history, `dialogue_animation` and pending dialogue schema. Current
 saves check both strings against the retained VM arguments and require the
-mode-3, no-character/no-relationship configuration. Partially revealed and
+mode-3, no-character/no-relationship configuration. SHS service 15 validation
+selects the references using the same prefix rule as live dispatch. Partially revealed and
 paginated saves keep their clock and byte offsets.
 
-An older `unhandled_yield` save at service 76 dispatches only that validated
+An older `unhandled_yield` save at SHS service 15 or service 76 dispatches only that validated
 pending call. It does not replay preceding bytecode, choices or random draws.
 Such stops discarded their dialogue animation but retained the previous panel;
 its character/art identity supplies the outgoing portrait for the new entrance.
@@ -166,6 +192,15 @@ and resize it, then reach the following Coach and team lines. A private local
 checkpoint check preserves the complete VM and both random streams while
 upgrading the reported stop, and reaches the subsequent service-91 loading
 screen at PC 5134. These are bounded checks, not a complete episode playthrough.
+
+Additional optional checks isolate original service-15 callers without a prefix
+and with a negative prefix from the supplied Spartan Games, Part 2 and Party
+Fowl episodes. Each restores an old unsupported stop with unchanged VM and
+random state, renders with both APK and IPA assets, and reproduces the same
+pixels after saving/loading. The original inputs remain private and are not
+test fixtures. Authored tests cover both call encodings, skipped prefixes,
+ignored words, invalid references, paging, save validation, outgoing portraits
+and transition randomness.
 
 ## Message panel (service 33)
 
@@ -613,7 +648,7 @@ effects   : no UI result-cell, string-slot, timer, audio or random-state writes
 
 `FUN_0009fe3c`, case `0x46`, switches on the first argument. Its fixed results
 are properties of the inspected Android 1.0.9 build. They do not change with
-the operating system running SHS Runtime.
+the operating system running EXP Runtime.
 
 | Selector | Native result | Runtime behavior |
 | --- | --- | --- |

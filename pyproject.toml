@@ -3,13 +3,13 @@ requires = ["setuptools >= 61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "shs-runtime"
-version = "0.2.0"
-description = "A compatible Surviving High School engine using player-supplied game files"
+name = "exp-runtime"
+version = "0.3.0"
+description = "A compatible EXP engine for Surviving High School and Cause of Death using player-supplied game files"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
-keywords = ["shs", "surviving-high-school", "kiwi", "exp", "game-engine"]
+keywords = ["shs", "surviving-high-school", "cause-of-death", "kiwi", "exp", "game-engine", "shs-runtime", "cod-runtime"]
 dependencies = ["Pillow>=10"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -23,14 +23,19 @@ desktop = ["pygame-ce>=2.5.7,<3"]
 build = ["pygame-ce>=2.5.7,<3", "pyinstaller>=6.16,<7"]
 
 [project.scripts]
-shs-tool = "shs_runtime.cli:main"
+exp-tool = "exp_runtime.cli:main"
+shs-tool = "exp_runtime.cli:main"
 
 [project.gui-scripts]
-shs = "shs_runtime.application:main"
+exp-runtime = "exp_runtime.application:main"
+shs = "exp_runtime.application:main"
 
 [tool.setuptools]
 include-package-data = false
 
+[tool.setuptools.package-data]
+exp_runtime = ["assets/kiwi.svg"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["shs_runtime*"]
+include = ["exp_runtime*"]

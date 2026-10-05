@@ -1,9 +1,12 @@
 # Episode catalog and category sections
 
-Reference: Android 1.0.9 `libshs09.so`, SHA-256
+SHS reference: Android 1.0.9 `libshs09.so`, SHA-256
 `b17aa4c71bc46666d414cafae6fac92bbcd755f3dcccd73975cf05f4a119665b`.
-The locally supplied `Episodes/shs_options.sav` supplies additional original
-catalog evidence. It is user content and is excluded from distributions.
+The locally supplied `decomp/shs/Episodes/shs_options.sav` supplies additional
+original catalog evidence. CoD uses its supplied iOS 1.3.4 executable and
+`decomp/cod/CoD Episodes/cod_options.sav` as references. These are user content
+and are excluded from distributions. Game profiles select their own filenames
+and validated save layouts; normalized catalog records remain shared.
 
 ## Native list behavior
 
@@ -42,7 +45,7 @@ The store list is a different path: `FUN_00070984` interprets
 server configuration. Those store/purchase services remain outside the local
 runtime.
 
-## Native options wire schema
+## SHS native options wire schema
 
 The supported catalog reader validates the entire following envelope. Numeric
 fields below are big endian unless explicitly marked as uninterpreted bytes.
@@ -98,17 +101,67 @@ only. The file is limited to 4 MiB.
 
 The supplied file contains 277 serialized list entries, plus a current-entry
 record. Deduplication leaves 274 catalog records. Filename or exact
-`(pack_id, episode_id, English title)` matching categorizes all 272 currently
-installed EXPs into 28 original groups. This establishes catalog coverage,
-not full-story execution coverage.
+`(pack_id, episode_id, English title)` matching categorizes all 271 external
+EXPs in `decomp/shs/Episodes`. Checks with the supplied APK and IPA produce
+272 and 273 episode records respectively, including bundled stories, in 28
+original groups with no numeric pack fallback. Adding the catalog to existing
+libraries preserves content identities; repeating a full-folder import adds
+zero episodes and leaves the manifest unchanged. These counts describe the
+supplied inputs and establish catalog coverage, not full-story execution.
+
+## CoD native options wire schema
+
+CoD retains `SHS_OPTIONS\0`, so the signature alone cannot identify the game.
+Native `SHSEngine::loadOptions` (`00019098`) accepts exactly version 17. Both
+it and `saveOptions` (`000195b4`) place the current episode at byte 33:
+
+```text
+CoDOptionsCatalog :=
+    signature       : bytes[12] = "SHS_OPTIONS\0"
+    version         : s32 = 17
+    ignored_value   : s32
+    ignored_flags   : bytes[5]
+    ignored_values  : s32[2]
+    current_episode : OptionalCatalogEntry
+    entry_count     : s32, 0..4096
+    entries         : OptionalCatalogEntry[entry_count]
+    pair_count      : s16, 0..4096
+    ignored_pairs   : (String, String)[pair_count]
+    EOF
+```
+
+`SHSEpisode::createFromStream:` (`00050b10`) consumes the same presence flag,
+two shorts, five titles, five categories, filename and download ID as the
+shared `OptionalCatalogEntry` above. Native `loadOptions` calls `loadRenames`
+at `0001923e` and then destroys its stream. The writer calls `saveRenames` at
+`0001975e` and immediately writes the file; there are no SHS trailing flags.
+
+This was checked through Ghidra MCP. The decompiler truncates the Objective-C
+continuations and misdecodes the load function's entry; read-only LLVM Thumb
+disassembly supplied the continuation. Bytes at `00019130`, `00019232` and
+`00019752` were cross-checked with Ghidra `read_memory`. No analysis mutations
+or raw native output are shipped.
+
+The supplied file validates to EOF with 80 list entries and a repeated current
+entry, yielding 80 unique catalog records. It categorizes 79 of 80 distinct
+external EXP hashes (103 filenames). One uncatalogued holiday story remains
+under its numeric pack. The reader preserves supplied labels, including their
+original mix of Volume and Season naming; it does not derive them from IDs.
+Unknown CoD versions, wrong envelopes, extra data and incomplete records are
+rejected. Only normalized English catalog metadata is retained; native runtime
+strings, preferences and progress are discarded.
 
 ## Local import and persistence
 
-Adding an episode folder also reads its `shs_options.sav`, when present.
+Adding an episode folder also reads its `shs_options.sav` (SHS) or
+`cod_options.sav` (CoD), when present. Matching is case-insensitive and uses the
+selected game, determined from the supplied package on initial import or the
+existing library on later imports. Other games' sidecars in a folder are
+ignored; directly selecting the other game's catalog is rejected.
 Selecting an individual EXP discovers a sibling sidecar. A catalog can also
 be added explicitly through the episode file picker, drag/drop, or
 `ContentLibrary.add_episodes([path])` without adding any new EXPs. The sidecar
-is optional; APK and EXP inputs remain sufficient to play.
+is optional; the selected game's APK/IPA and EXP inputs remain sufficient to play.
 
 Only normalized catalog metadata is retained in the library. The native
 options file, user strings, flags, and native progress are not copied or
@@ -127,8 +180,10 @@ CatalogEntry := {
 
 Filenames are normalized to a case-insensitive basename and are only lookup
 keys. No catalog path is opened. A matching filename handles native synthetic
-IDs; an exact ID/title match handles renamed EXPs. Conflicting category matches
-remain unknown. New catalog records replace the same ID/title/filename key;
+IDs; an exact ID/title match handles renamed EXPs. Identical EXPs imported under
+different filenames retain those names in the existing episode's `aliases`
+field, and catalog matching considers those aliases too. Conflicting category
+matches remain unknown. New catalog records replace the same ID/title/filename key;
 unrelated entries remain available for episodes imported later.
 
 Catalog and episode changes publish together by the existing atomic manifest
@@ -136,6 +191,15 @@ replacement. Invalid catalogs or EXPs abort the whole batch. Catalog-only
 updates return zero newly added episodes. Category changes do not change the
 APK/EXP content identities, save names, preferences, or saved progress. No
 catalog or copied game titles are embedded in the executable.
+
+Both initial and incremental import deduplicate by full EXP SHA-256, including
+duplicates of bundled content, duplicates within one batch, repeated folders
+and renamed byte-identical copies. Alias/catalog updates publish atomically
+with new episodes and roll back on validation failure. Repeating the same
+import is a no-op once its aliases and categories are known. Equal titles or
+pack/episode IDs do not imply equal scripts/assets: differing hashes remain
+separate editions with separate progress. Deduplication is local to each
+game's library; the game's base assets continue to be part of save identity.
 
 ## Desktop browser contract
 

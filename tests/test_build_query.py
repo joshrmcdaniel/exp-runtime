@@ -5,9 +5,9 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from shs_runtime.engine import EngineAction, EngineState
-from shs_runtime.runtime import Session
-from shs_runtime.vm import KiwiVM, StopKind, VMError
+from exp_runtime.engine import EngineAction, EngineState
+from exp_runtime.runtime import Session
+from exp_runtime.vm import KiwiVM, StopKind, VMError
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -128,7 +128,7 @@ class BuildQueryTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'player content is absent')
     def test_original_football_call_returns_zero_and_executes_its_conditional_branch(self):
-        from shs_runtime.content import ContentLibrary
+        from exp_runtime.content import ContentLibrary
         with ContentLibrary(Path('.shs-library')) as library:
             r = library.open_episode('Football Star')
             vm = KiwiVM(r.program(25001))

@@ -6,11 +6,11 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from shs_runtime.engine import EngineAction
-from shs_runtime.content import ContentLibrary
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.survey import CONNECTION_ERROR, SURVEY_TEXT
-from shs_runtime.vm import VMError
+from exp_runtime.engine import EngineAction
+from exp_runtime.content import ContentLibrary
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.shs.survey import CONNECTION_ERROR, SURVEY_TEXT
+from exp_runtime.vm import VMError
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -225,7 +225,7 @@ class SurveyTests(unittest.TestCase):
     def test_receipt_render_pause_focus_input_gate_and_save_restore(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as lib:
             r = lib.open_episode('44_Green_With_Kenji.exp')

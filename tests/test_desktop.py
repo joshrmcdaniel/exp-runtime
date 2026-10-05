@@ -5,7 +5,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 
-from shs_runtime.runtime import Session
+from exp_runtime.runtime import Session
 from test_runtime import Resources, answer_screen, branching_program
 
 
@@ -15,8 +15,8 @@ class DesktopTests(unittest.TestCase):
     def test_dialogue_motion_renders_between_states_and_pauses_without_advancing_vm(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -71,8 +71,8 @@ class DesktopTests(unittest.TestCase):
     def test_minigame_input_pause_and_original_art(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         from test_football import resources as football_resources, start_play
         from test_word_grid import resources as grid_resources, play_phase
         from test_minigames import word_resources
@@ -130,8 +130,8 @@ class DesktopTests(unittest.TestCase):
     def test_masked_portraits_blend_on_opaque_cocoa_surface(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.desktop_dialogue import DialogueRenderer
-        from shs_runtime.ui_assets import Raster
+        from exp_runtime.desktop_dialogue import DialogueRenderer
+        from exp_runtime.ui_assets import Raster
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -159,8 +159,8 @@ class DesktopTests(unittest.TestCase):
 
     def test_larger_portraits_are_normalized_before_masking_and_flipping(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.desktop_dialogue import DialogueRenderer
-        from shs_runtime.ui_assets import Raster
+        from exp_runtime.desktop_dialogue import DialogueRenderer
+        from exp_runtime.ui_assets import Raster
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -184,10 +184,10 @@ class DesktopTests(unittest.TestCase):
 
     def test_portrait_art_reaches_circle_bottom_after_native_crop(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.desktop_dialogue import DialogueRenderer
-        from shs_runtime.desktop_picker import CharacterPickerRenderer
-        from shs_runtime.dialogue_animation import DialoguePortrait
-        from shs_runtime.ui_assets import Raster
+        from exp_runtime.desktop_dialogue import DialogueRenderer
+        from exp_runtime.desktop_picker import CharacterPickerRenderer
+        from exp_runtime.dialogue_animation import DialoguePortrait
+        from exp_runtime.ui_assets import Raster
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -225,8 +225,8 @@ class DesktopTests(unittest.TestCase):
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user library is not present')
     def test_imported_new_girl_portraits_render_through_opening_and_save_restore(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -270,7 +270,7 @@ class DesktopTests(unittest.TestCase):
     def test_window_input_save_load_and_resized_mouse_coordinates(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -302,8 +302,8 @@ class DesktopTests(unittest.TestCase):
     def test_original_dialogue_fonts_on_opening_and_saved_choice_branches(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         import pygame
 
         self.addCleanup(pygame.quit)

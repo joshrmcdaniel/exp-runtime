@@ -1,12 +1,12 @@
 # Source distribution and local builds
 
-SHS Runtime provides the compatible engine, KiWi interpreter, local asset
+EXP Runtime provides the compatible engine, KiWi interpreter, local asset
 importer, authored specifications, tests and build tools. Each player supplies
-an original Android 1.0.9 APK or compatible SHS IPA, plus additional episode EXP files. The original
+an SHS Android 1.0.9 APK, compatible SHS IPA, or CoD IPA, plus additional EXP files. The original
 ARM executable is inspected only to identify the supported APK profile; it is
-not executed by the runtime. IPA import identifies SHS by bundle identifier
+not executed by the runtime. IPA import identifies the game by bundle identifier
 and validates its required assets, independently of the version number.
-Its system-font fallback and current limits are in [IPA.md](IPA.md).
+System-font fallback and current limits are in [IPA.md](IPA.md) and [COD.md](COD.md).
 
 ## Downloads built by GitHub Actions
 
@@ -60,20 +60,20 @@ uv sync --locked --extra build
 uv run --locked --extra build python tools/build_desktop.py
 ```
 
-Open `dist/desktop/SHS Runtime.app` on macOS. Windows and Linux executables
-are inside `dist/desktop/SHS Runtime/`; keep that complete directory together.
+Open `dist/desktop/EXP Runtime.app` on macOS. Windows and Linux executables
+are inside `dist/desktop/EXP Runtime/`; keep that complete directory together.
 Build on the target operating system. CI adds startup checks for all four
 download targets; complete gameplay still needs validation on each platform.
 
 The build bundles Python and the runtime dependencies. No APK, IPA, EXPs, Ghidra,
 Ren'Py SDK, extracted resources or old checkout are required to build it.
-On first launch, choose your APK or IPA and add episode files through the menu.
+On first launch, choose SHS or CoD, supply its APK/IPA, and add its episode files.
 Extraction happens locally; the application has no game download service.
 
 To run from source instead:
 
 ```sh
-uv run --locked --extra desktop shs
+uv run --locked --extra desktop exp-runtime
 ```
 
 Libraries and saves stay in the user's application-data directory or another
@@ -95,10 +95,14 @@ and skip when those inputs are absent; ordinary tests use synthetic fixtures.
 
 - `.gitignore` excludes known local game/research paths and generated output
   from normal Git staging. It does not exclude already tracked files.
-- `MANIFEST.in` explicitly selects authored source, tests, tools and docs for
-  source packages. Setuptools limits Python packages to `src/shs_runtime`.
+- `MANIFEST.in` explicitly selects authored source, tests, tools, docs and the
+  kiwi SVG logo for source packages. Setuptools limits Python packages to
+  `src/exp_runtime` and explicitly includes only `assets/kiwi.svg` as package data.
 - `tools/build_desktop.py` bundles the runtime and its dependencies. `LICENSE`
-  is the only repository file explicitly collected as executable data.
+  and the authored kiwi SVG are the only repository files explicitly collected
+  as executable data. The build renders the SVG into a macOS ICNS or Windows
+  ICO using the existing pygame/Pillow dependencies; no game files are needed.
+  The SVG also supplies the launcher logo and window icon on all platforms.
 - `tools/package_desktop.py` archives only the expected app bundle/directory,
   rejecting known game inputs, research files and external links. The workflow
   uploads only `dist/downloads`, never the workspace or content library.

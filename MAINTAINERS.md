@@ -1,8 +1,9 @@
-# Contributing to SHS Runtime
+# Contributing to EXP Runtime
 
-SHS Runtime is an experimental compatible engine for Surviving High School.
+EXP Runtime is an experimental compatible engine for Surviving High School
+and Cause of Death.
 It executes original KiWi bytecode and imports resources from each player's
-Android 1.0.9 APK and EXP episodes. The goal is to reproduce the original
+SHS APK/IPA or CoD IPA and EXP episodes. The goal is to reproduce the original
 gameplay and interface. It is not an ARM recompilation or a Ren'Py conversion.
 
 Code, tests, documentation, compatibility reports and platform verification
@@ -17,11 +18,11 @@ Install uv and run these commands from the repository root:
 ```sh
 uv sync --locked --extra desktop
 uv run --locked --extra desktop python -m unittest discover -s tests
-uv run --locked --extra desktop shs
+uv run --locked --extra desktop exp-runtime
 ```
 
 The project supports Python 3.10 or newer; CI uses Python 3.14. The launcher
-opens setup when no content library is configured. Playing an episode requires
+opens a game chooser; each game has its own content setup. Playing an episode requires
 your own game files, imported locally through the app.
 
 Read [DEVELOPMENT.md](docs/DEVELOPMENT.md) for the module map, diagnostic tools
@@ -93,7 +94,7 @@ the APK contains bundled stories used by many of the checks.
 Create the local test library with this command:
 
 ```sh
-uv run --locked shs-tool import --apk surviving-high-school-1-0-9.apk --library .shs-library
+uv run --locked exp-tool import --apk surviving-high-school-1-0-9.apk --library .shs-library
 ```
 
 To include `Episodes/` during this initial import, append **`--episodes Episodes`**
@@ -111,7 +112,7 @@ uv run --locked --extra desktop shs --library .shs-library
 Check the imported episode list, then run the tests:
 
 ```sh
-uv run --locked shs-tool list --library .shs-library
+uv run --locked exp-tool list --library .shs-library
 uv run --locked --extra desktop python -m unittest discover -s tests -v
 ```
 

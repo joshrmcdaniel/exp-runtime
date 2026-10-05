@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-from shs_runtime.grid_layout import heading_lines, prompt_position, tutorial_box
-from shs_runtime.runtime import SaveError, Session
+from exp_runtime.shs.grid_layout import heading_lines, prompt_position, tutorial_box
+from exp_runtime.runtime import SaveError, Session
 from test_word_grid import play_phase, resources, tutorial_resources
 
 
@@ -106,8 +106,8 @@ class GridLayoutTests(unittest.TestCase):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as lib:
             r = lib.open_episode('The_New_Girl.exp')

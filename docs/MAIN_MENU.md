@@ -5,6 +5,10 @@ Reference: SHS Android 1.0.9, `libshs09.so`, SHA-256
 Addresses below refer to that loaded binary. The Android interface is the
 working reference for the shared interface described by the user.
 
+EXP Runtime first presents an asset-free game chooser. SHS and CoD each open
+their own validated library and game menu; the SHS evidence below does not
+establish complete CoD presentation parity. [COD.md](COD.md) records its bindings.
+
 ## 1. Native application states and commands
 
 The main menu is outside the KiWi VM. `FUN_00090818` switches application
@@ -87,8 +91,9 @@ Native list assets recovered through `0006ca44`/`0006cf00` and layouts
 97 (replay), and 101 (play) from pack 16. Layouts 70/71 provide the blue
 normal/pressed footer buttons. The desktop uses those resources with local
 metadata, scrolling, and a searchable list. The native category strings retained
-in the user's `shs_options.sav` organize the list into collapsible sections;
-saved games also appear as shortcuts at the top of Play/Resume. Headers use
+in the user's `shs_options.sav` or CoD's `cod_options.sav` organize the list
+into collapsible sections; saved games also appear as shortcuts at the top
+of Play/Resume. Headers use
 original frame 76 and font registry 2. Search includes category names and
 temporarily expands results. By Number / By Title sorts within sections and
 remembers the choice. Default ordering uses `(pack_id, episode_id, title)`,
@@ -132,8 +137,8 @@ Android's supplied bitmap fonts have no accented glyphs. Menu labels which
 need them use the installed Arial Rounded MT Bold face, then pygame's default
 font when absent. Other menu labels retain their original bitmap metrics;
 IPA's existing original-font lookup remains first. This fallback is confined
-to desktop menu text. Story font/layout validation and save version 13 are
-unchanged. Choosing a title language preserves live sessions and existing
+to desktop menu text. Story font/layout validation is independent of the
+title-language setting. Choosing a title language preserves live sessions and existing
 manual/automatic checkpoints.
 
 ## 3. Additional resource schemas
@@ -210,8 +215,12 @@ See [IPA.md](IPA.md#optional-apk-music) for asset precedence and manifest versio
 Initial imports stage a new library and publish by directory rename.
 `ContentLibrary.add_episodes()` stages and validates the entire batch before
 atomically replacing `library.json`. SHA-256 deduplication preserves existing
-records, the original inputs, and saved progress. A failed validation changes
-neither the manifest nor the content files. A crash during the final file moves
+content identities, the original inputs, and saved progress in both games.
+An identical EXP imported under another filename adds a lookup alias, allowing
+catalogs to name that existing entry; it does not add another episode. Only
+the selected game's catalog is discovered and shown in the file picker.
+A failed validation changes neither the manifest nor the content files.
+A crash during the final file moves
 can leave unreferenced content files, but cannot publish a half-written manifest.
 Use one writer per library; a manifest change detected since opening aborts the
 import. This is not a multi-process database locking protocol.
@@ -254,21 +263,34 @@ not saved to disk, and no native menu music loop has been verified.
 
 ## 5. Executable and content boundary
 
-`shs`, `python -m shs_runtime.application`, and `shs-tool play` launch the menu.
-`--library` selects a relocatable content directory. A source checkout uses an
-existing `.shs-library`; otherwise the default is per-user application data:
+`exp-runtime`, `python -m exp_runtime.application`, and `exp-tool play` launch
+the game chooser. `shs` / `shs-tool` remain command aliases. `--game shs|cod`
+opens one game directly; `--library` opens a specified relocatable library.
+New libraries default to per-user application data, replacing `<game>` with
+`shs` or `cod`:
 
-- macOS: `~/Library/Application Support/SHS Runtime/library`
-- Windows: `%LOCALAPPDATA%/SHS Runtime/library`
-- Linux: `$XDG_DATA_HOME/SHS Runtime/library`, defaulting to `~/.local/share`
+- macOS: `~/Library/Application Support/EXP Runtime/libraries/<game>`
+- Windows: `%LOCALAPPDATA%/EXP Runtime/libraries/<game>`
+- Linux: `$XDG_DATA_HOME/EXP Runtime/libraries/<game>`, defaulting to `~/.local/share`
 
 A frozen executable uses application data independently of its working directory
 or extraction location. **Open Library remembers the chosen folder** in
-`SHS Runtime/launcher.json` beside the default library. Its schema is
-`{version:1, library:absolute_path}`; publication is atomic. Subsequent launches
-use that library, including source launches from a different working directory.
+`EXP Runtime/launcher.json`. Its schema is
+`{version:2, libraries:{shs:absolute_path, cod:absolute_path}}`; either game
+may be absent. Publication is atomic and preserves the other game's location.
+Selecting a game uses its remembered library across working directories.
+Existing v1 launcher preferences in `SHS Runtime` and its default `library`
+folder remain discoverable in place. Source checkouts additionally discover
+`.shs-library`. No original player files are moved or rewritten by discovery.
 An explicit `--library` is a launch override and does not change the remembered
 default. Imported episodes appear in Play/Resume even before they have saves.
+
+**Options → Switch Game** checkpoints a live session before closing its library,
+stops audio and discards per-game rendering caches. If the checkpoint fails,
+the session stays open. The other game loads its own preferences and saves.
+Setup rejects packages/libraries belonging to the other selected game.
+EXPs themselves have no reliable game marker and must be added to the correct
+selected library. SHS APK supplementation is unavailable for CoD libraries.
 
 Build on the target operating system:
 
@@ -277,11 +299,13 @@ uv sync --locked --extra build
 uv run --locked --extra build python tools/build_desktop.py
 ```
 
-The build creates `dist/desktop/SHS Runtime.app` on macOS and a
-`dist/desktop/SHS Runtime` executable directory on other systems. Distribute the
+The build creates `dist/desktop/EXP Runtime.app` on macOS and a
+`dist/desktop/EXP Runtime` executable directory on other systems. Distribute the
 whole app/directory. The build entry point is a temporary authored launcher;
-LICENSE is the only repository file explicitly collected as data. Runtime
-modules, Python, pygame/SDL, dependencies and their support files ship; **no
+LICENSE and the authored kiwi SVG logo are the only repository files explicitly
+collected as data. The game chooser and window use this logo; macOS and Windows
+app icons are generated from the same SVG during the build. Runtime modules,
+Python, pygame/SDL, dependencies and their support files ship; **no
 APK, EXP, extracted game assets, original native executable, screenshots,
 decompilation, library manifest or save files ship**. Users import their data
 on first launch. The same build works from a source checkout without any game

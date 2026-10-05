@@ -1,10 +1,10 @@
 import copy
 import unittest
 
-from shs_runtime.engine import EngineState
-from shs_runtime.minigames import NativeRandom
-from shs_runtime.runtime import Session
-from shs_runtime.vm import KiwiVM, VMError
+from exp_runtime.engine import EngineState
+from exp_runtime.randomness import NativeRandom
+from exp_runtime.runtime import Session
+from exp_runtime.vm import KiwiVM, VMError
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 

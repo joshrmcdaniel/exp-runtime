@@ -2,8 +2,8 @@ import copy
 import struct
 import unittest
 
-from shs_runtime.decode.bytecode import OPERAND_OPCODES, decode_program
-from shs_runtime.vm import KiwiVM, StopKind, VMError
+from exp_runtime.decode.bytecode import OPERAND_OPCODES, decode_program
+from exp_runtime.vm import KiwiVM, StopKind, VMError
 
 
 def program(*instructions, words=(), gap=0):

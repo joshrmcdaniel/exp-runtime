@@ -7,11 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-from shs_runtime.football import FootballTarget, Play
-from shs_runtime.football_layout import (countdown_motion, feedback_motion, feedback_text,
+from exp_runtime.shs.football import FootballTarget, Play
+from exp_runtime.shs.football_layout import (countdown_motion, feedback_motion, feedback_text,
                                          footer_id, heading_id, help_motion, legend_codes,
                                          target_position, team_name, yard_glyphs)
-from shs_runtime.runtime import SaveError, Session
+from exp_runtime.runtime import SaveError, Session
 from test_football import resources, start_play, wait_for
 
 
@@ -173,7 +173,7 @@ class FootballLayoutTests(unittest.TestCase):
     def test_sprite_node_does_not_apply_composite_origin_twice(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'; os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.desktop_football import FootballRenderer
+        from exp_runtime.shs.desktop_football import FootballRenderer
         pygame.init(); pygame.display.set_mode((320, 480)); self.addCleanup(pygame.quit)
         renderer = FootballRenderer(None, None, None)
         renderer.atlas = lambda: SimpleNamespace(literals=lambda i: ((0, -40, -32),))
@@ -200,8 +200,8 @@ class FootballLayoutTests(unittest.TestCase):
     def test_original_assets_render_save_pause_and_resized_target_input(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'; os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as lib:
             r = lib.open_episode('Football_Star.exp')

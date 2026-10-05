@@ -38,8 +38,8 @@ jobs:
       SDL_VIDEODRIVER: dummy
       SDL_AUDIODRIVER: dummy
       PYGAME_HIDE_SUPPORT_PROMPT: '1'
-      SHS_TARGET: ${{ matrix.target }}
-      SHS_BUILD_LABEL: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha }}
+      EXP_TARGET: ${{ matrix.target }}
+      EXP_BUILD_LABEL: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -66,7 +66,7 @@ jobs:
       - name: Package, audit and test the extracted download
         run: >-
           uv run --locked --extra build python tools/package_desktop.py
-          --target "$SHS_TARGET" --label "$SHS_BUILD_LABEL" --smoke-test
+          --target "$EXP_TARGET" --label "$EXP_BUILD_LABEL" --smoke-test
 
       - name: Upload downloadable archive and checksum
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -106,20 +106,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SHS_TAG: ${{ github.ref_name }}
+          EXP_TAG: ${{ github.ref_name }}
         shell: bash
         run: |
-          if draft=$(gh release view "$SHS_TAG" --repo "$GH_REPO" --json isDraft --jq .isDraft 2>/dev/null); then
-            gh release upload "$SHS_TAG" dist/release/* --repo "$GH_REPO" --clobber
+          if draft=$(gh release view "$EXP_TAG" --repo "$GH_REPO" --json isDraft --jq .isDraft 2>/dev/null); then
+            gh release upload "$EXP_TAG" dist/release/* --repo "$GH_REPO" --clobber
             if [[ "$draft" == true ]]; then
-              gh release edit "$SHS_TAG" --repo "$GH_REPO" --draft=false
+              gh release edit "$EXP_TAG" --repo "$GH_REPO" --draft=false
             fi
           else
             flags=()
-            if [[ "$SHS_TAG" == *-* ]]; then
+            if [[ "$EXP_TAG" == *-* ]]; then
               flags+=(--prerelease)
             fi
-            gh release create "$SHS_TAG" dist/release/* \
-              --repo "$GH_REPO" --verify-tag --title "SHS Runtime $SHS_TAG" \
+            gh release create "$EXP_TAG" dist/release/* \
+              --repo "$GH_REPO" --verify-tag --title "EXP Runtime $EXP_TAG" \
               --notes-file RELEASE.md "${flags[@]}"
           fi

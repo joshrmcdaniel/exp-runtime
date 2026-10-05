@@ -8,14 +8,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from shs_runtime.content import ContentLibrary, digest, import_game
-from shs_runtime.engine import EngineAction, PanelState
-from shs_runtime.loading import LoadingScreen
-from shs_runtime.menu import MenuState
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.scene_badge import SceneBadge
-from shs_runtime.trace import trace_archive
-from shs_runtime.vm import VMError
+from exp_runtime.content import ContentLibrary, digest, import_game
+from exp_runtime.engine import EngineAction, PanelState
+from exp_runtime.loading import LoadingScreen
+from exp_runtime.menu import MenuState
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.scene_badge import SceneBadge
+from exp_runtime.trace import trace_archive
+from exp_runtime.vm import VMError
 from test_content import FAKE_NATIVE, archive, make_apk, metadata
 from test_runtime import Resources, host_call
 from test_vm import program
@@ -165,7 +165,7 @@ class EpisodeExitMenuTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        profile = patch('shs_runtime.content.NATIVE_SHA256', digest(FAKE_NATIVE))
+        profile = patch('exp_runtime.shs.content.NATIVE_SHA256', digest(FAKE_NATIVE))
         profile.start()
         self.addCleanup(profile.stop)
         apk = self.root / 'authored.apk'
@@ -224,7 +224,7 @@ class EpisodeExitMenuTests(unittest.TestCase):
             state.session(state.selected)
 
     def make_app(self):
-        from shs_runtime.application import Application
+        from exp_runtime.application import Application
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         app = Application(self.root / 'empty', audio=False)
         self.addCleanup(app.close)
@@ -260,7 +260,7 @@ class EpisodeExitMenuTests(unittest.TestCase):
         s.pending = EngineAction('unhandled_yield', request, False)
         s.engine.music_id = 8201
         app.state.checkpoint(s)
-        with patch('shs_runtime.desktop.Desktop._sync_music') as music:
+        with patch('exp_runtime.desktop.Desktop._sync_music') as music:
             app.start()
             music.assert_not_called()  # Loading a terminal save must not restart its old cue.
         self.assertEqual(app.screen, 'main')

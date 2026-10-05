@@ -1,9 +1,9 @@
 from pathlib import Path
 import unittest
 
-from shs_runtime.engine import EngineState
-from shs_runtime.trace import trace_archive
-from shs_runtime.vm import KiwiVM, StopKind, VMError
+from exp_runtime.engine import EngineState
+from exp_runtime.trace import trace_archive
+from exp_runtime.vm import KiwiVM, StopKind, VMError
 from test_vm import program
 
 

@@ -8,11 +8,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from shs_runtime.choice import ChoiceLayout
-from shs_runtime.content import ContentLibrary
-from shs_runtime.fonts import BitmapFont, Glyph, layout_text
-from shs_runtime.runtime import Session
-from shs_runtime.ui_assets import Layout, LayoutBank, LayoutNode
+from exp_runtime.choice import ChoiceLayout
+from exp_runtime.content import ContentLibrary
+from exp_runtime.fonts import BitmapFont, Glyph, layout_text
+from exp_runtime.runtime import Session
+from exp_runtime.ui_assets import Layout, LayoutBank, LayoutNode
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -98,7 +98,7 @@ class ChoiceTimerRenderTests(unittest.TestCase):
 
     def renderer(self):
         import pygame
-        from shs_runtime.desktop_choice import ChoiceRenderer
+        from exp_runtime.desktop_choice import ChoiceRenderer
         layout = authored_layout()
         def frame(asset, index):
             surface = pygame.Surface((20, 20), pygame.SRCALPHA)
@@ -201,7 +201,7 @@ class ChoiceTests(unittest.TestCase):
     def test_translucent_panel_matches_on_rgb_and_cocoa_default_canvases(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -229,7 +229,7 @@ class ChoiceTests(unittest.TestCase):
     def test_native_choice_menu_timer_save_and_resized_selection(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
         import pygame
 
         self.addCleanup(pygame.quit)
@@ -283,7 +283,7 @@ class ChoiceTests(unittest.TestCase):
     def test_real_choice_survives_rendering_and_scroll_keeps_last_index_reachable(self):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
         import pygame
 
         self.addCleanup(pygame.quit)

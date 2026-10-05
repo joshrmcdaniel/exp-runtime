@@ -7,12 +7,12 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-from shs_runtime.dialogue import DialogueLayout
-from shs_runtime.fonts import BitmapFont, Glyph, TextStyle, layout_label
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.scene_badge import SceneBadge
-from shs_runtime.speaker_names import NameFontState, SpeakerNames, speaker_label
-from shs_runtime.ui_assets import Rect
+from exp_runtime.dialogue import DialogueLayout
+from exp_runtime.fonts import BitmapFont, Glyph, TextStyle, layout_label
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.scene_badge import SceneBadge
+from exp_runtime.speaker_names import NameFontState, SpeakerNames, outline_speaker_label, speaker_label
+from exp_runtime.ui_assets import Rect
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -23,7 +23,7 @@ def authored_font(line_height=16, ink_height=12, yoffset=2):
     return BitmapFont('Authored label font', 16, line_height, 'unused.png', glyphs, {})
 
 
-def authored_dialogue():
+def authored_dialogue(*, outline=False):
     # A compact layout bank, constructed without copying an APK resource.
     rects = {0x4c: Rect(8, 265, 190, 31), 0x43: Rect(8, 233, 190, 63),
              0x4e: Rect(196, 225, 128, 128), 8: Rect(40, 304, 240, 98),
@@ -31,8 +31,14 @@ def authored_dialogue():
              0x30: Rect(-6, 225, 128, 128),
              0x6a: Rect(18, 265, 284, 31), 0x61: Rect(18, 233, 284, 63)}
     layout = DialogueLayout.__new__(DialogueLayout)
+    layout.resources = SimpleNamespace(library=SimpleNamespace(game_id='shs'))
     layout.bank = SimpleNamespace(rectangle=lambda bank, node: rects[node])
+    layout.border_widths = lambda theme: (10, 10)
     name_font, body_font = authored_font(33, 30, 0), authored_font()
+    if outline:
+        from exp_runtime.ios_fonts import IOSFont
+        name_font = IOSFont(**authored_font(26, 24, 4).__dict__, cap_height=20, descent=5)
+        body_font = IOSFont(**body_font.__dict__, cap_height=12, descent=4)
     layout.font = lambda name: name_font if name.startswith('PajamaHip') else body_font
     return layout
 
@@ -46,6 +52,11 @@ class SpeakerPlacementTests(unittest.TestCase):
         scale = page.name_scale
         body_top = page.body_origin[1] + page.body.ink_bounds[1]
         self.assertLessEqual(y + scale * bottom, body_top + 1e-6)
+        bounds = page.name_bounds
+        self.assertGreaterEqual(x + scale * left, bounds.x - 1e-6)
+        self.assertLessEqual(x + scale * right, bounds.x + bounds.width + 1e-6)
+        self.assertGreaterEqual(y + scale * top, bounds.y - 1e-6)
+        self.assertLessEqual(y + scale * bottom, bounds.y + bounds.height + 1e-6)
         self.assertGreaterEqual(x + scale * left, -1e-6)
         self.assertLessEqual(x + scale * right, 320 + 1e-6)
         if page.portrait:
@@ -112,6 +123,129 @@ class SpeakerPlacementTests(unittest.TestCase):
                         self.assert_name_fits(page)
                         self.assertEqual(layout.page(details, names=names), page)
                         self.assertEqual(names, before)
+
+    def test_header_fits_tall_outline_glyphs_and_remains_attached_after_long_names(self):
+        # Wider/taller substitute faces expose both defects: the previous fit
+        # constrained only viewport width and allowed unlimited upward motion.
+        # All metrics, strings and skin widths here are authored.
+        for ink_height, yoffset, border in ((30, 0, (10, 10)), (61, -8, (6, 14))):
+            layout, names = authored_dialogue(), SpeakerNames()
+            name_font = authored_font(33, ink_height, yoffset)
+            name_font.glyphs.update({code: replace(g, xoffset=-3, width=14)
+                                     for code, g in name_font.glyphs.items()})
+            native_font = layout.font
+            layout.font = lambda name: name_font if name.startswith('PajamaHip') else native_font(name)
+            layout.border_widths = lambda theme: border
+            for mode in (2, 1, 3):
+                for theme in (1, 2, 3, -1):
+                    for speaker in ('Inspector Avery Stone', 'Jo', 'A\nSecond\nThird', 'W' * 60):
+                        with self.subTest(ink_height=ink_height, mode=mode, theme=theme, speaker=speaker):
+                            details = dict(presentation_mode=mode, theme=theme, emphasis_theme=1,
+                                           speaker=speaker, text='Read this authored paragraph. ' * 20)
+                            layout.prepare_name(details, names)
+                            before = copy.deepcopy(names)
+                            page = layout.page(details, names=names)
+                            self.assert_name_fits(page)
+                            extra = 304 - page.box.y
+                            self.assertEqual(page.name_bounds.y, 233 if extra == 40 else 265)
+                            self.assertLessEqual(page.name_bounds.height, 63 if extra == 40 else 31)
+                            self.assertGreaterEqual(page.name_bounds.y + page.name_bounds.height, page.box.y)
+                            self.assertGreaterEqual(page.name_bounds.x, page.box.x - border[0])
+                            self.assertLessEqual(page.name_bounds.x + page.name_bounds.width,
+                                                 page.box.x + page.box.width + border[1])
+                            if ink_height * .9 > page.name_bounds.height:
+                                self.assertLess(page.name_scale, .9)
+                            later = layout.page(details, start=page.end, names=names)
+                            self.assertEqual((later.name, later.name_origin, later.name_scale),
+                                             (page.name, page.name_origin, page.name_scale))
+                            self.assertEqual(names, before)
+
+    def test_outline_titles_wrap_in_native_regions_at_full_size_for_both_games(self):
+        # Authored advances: this title exceeds the 190-wide normal region;
+        # the old widened Cocos label would put it on one line and shrink it.
+        for game in ('shs', 'cod'):
+            layout = authored_dialogue(outline=True)
+            layout.resources.library.game_id = game
+            for mode in (1, 2):
+                details = dict(presentation_mode=mode, theme=1, emphasis_theme=1,
+                               speaker='Inspector Avery Stone', text='An authored sentence.')
+                # Make the last word too wide to fit beside the others, using
+                # only authored metrics and the same algorithm for every name.
+                font = layout.font('PajamaHip26')
+                font.glyphs[ord('I')] = replace(font.glyphs[ord('I')], advance=24)
+                label = outline_speaker_label(details['speaker'], mode, 'PajamaHip26', layout.bank, font)
+                self.assertEqual([details['speaker'][r.start:r.end] for r in label.layout.lines],
+                                 ['Inspector Avery', 'Stone'])
+                self.assertEqual((label.extra, label.scale, label.header.height), (40, 1, 63))
+                self.assertEqual(label.layout.lines[1].x, 20 if mode == 1 else 5)
+                self.assertEqual(label.layout.lines[1].y - label.layout.lines[0].y, 28)
+                self.assertEqual(label.origin[1], 240.5)
+                page = layout.page(details)
+                self.assertEqual((page.box.y, page.name_scale), (264, 1))
+                left, top, right, bottom = page.name.ink_bounds
+                self.assertLess(page.name_origin[1] + top, page.box.y)
+                self.assertGreater(page.name_origin[1] + bottom, page.box.y)
+                self.assert_name_fits(page)
+
+    def test_outline_short_titles_keep_native_alignment_and_ignore_previous_name_size(self):
+        layout, names = authored_dialogue(outline=True), SpeakerNames()
+        for mode, flags, origin_x in ((1, 0x1b, 108), (2, 0x19, 21), (3, 0x1a, 18)):
+            for theme in (1, 2, 3, -1):
+                d = dict(presentation_mode=mode, theme=theme, emphasis_theme=1,
+                         speaker='Jo', text='Read this authored paragraph. ' * 30)
+                fresh = layout.page(d)
+                label = outline_speaker_label('Jo', mode, 'PajamaHip26', layout.bank, layout.font('PajamaHip26'))
+                self.assertEqual((label.extra, label.flags, label.origin), (8, flags, (origin_x, 270.5)))
+                for speaker in ('A very long previous speaker name', 'Jo', 'A\nSecond\nThird', 'Jo'):
+                    d['speaker'] = speaker
+                    layout.prepare_name(d, names)
+                    before = copy.deepcopy(names)
+                    page = layout.page(d, names=names)
+                    self.assert_name_fits(page)
+                    if speaker == 'Jo':
+                        self.assertEqual(page, fresh)
+                    later = layout.page(d, start=page.end, names=names)
+                    self.assertEqual((page.name, page.name_origin, page.name_scale),
+                                     (later.name, later.name_origin, later.name_scale))
+                    self.assertEqual(names, before)
+
+    def test_outline_body_region_does_not_move_or_gain_lines_from_a_tall_title(self):
+        layout = authored_dialogue(outline=True)
+        text = 'Read the authored paragraph. ' * 40
+        for mode in (1, 2, 3):
+            short = layout.page(dict(presentation_mode=mode, theme=1, emphasis_theme=1,
+                                     speaker='Jo', text=text))
+            tall = layout.page(dict(presentation_mode=mode, theme=1, emphasis_theme=1,
+                                    speaker='An exceptionally long authored speaker name', text=text))
+            self.assertEqual((short.box.y, tall.box.y), (296, 264))
+            self.assertEqual(short.body_origin, (40, 304))
+            self.assertEqual((short.body_origin, short.body, short.end),
+                             (tall.body_origin, tall.body, tall.end))
+            self.assertEqual(len(tall.body.lines), 4)
+            self.assertEqual([r.y for r in tall.body.lines], [0, 22, 44, 66])
+            self.assertEqual(tall.body.lines[0].x, 80 if mode == 1 else 0)
+            self.assertLessEqual(tall.body_origin[1] + tall.body.ink_bounds[3],
+                                 tall.box.y + tall.box.height)
+
+    def test_outline_substitute_ink_is_bounded_without_altering_font_history(self):
+        layout, names = authored_dialogue(outline=True), SpeakerNames()
+        font = layout.font('PajamaHip26')
+        font.glyphs.update({code: replace(g, xoffset=-3, width=14, height=61, yoffset=-8)
+                            for code, g in font.glyphs.items()})
+        for mode in (1, 2, 3):
+            for theme in (1, 2, 3, -1):
+                for speaker in ('Jo', 'Inspector Avery Stone', 'A\nSecond\nThird', 'W' * 60):
+                    d = dict(presentation_mode=mode, theme=theme, emphasis_theme=1,
+                             speaker=speaker, text='Read this paragraph. ' * 20)
+                    layout.prepare_name(d, names)
+                    before = copy.deepcopy(names)
+                    page = layout.page(d, names=names)
+                    self.assert_name_fits(page)
+                    self.assertLess(page.name_scale, 1)
+                    later = layout.page(d, start=page.end, names=names)
+                    self.assertEqual((page.name, page.name_origin, page.name_scale),
+                                     (later.name, later.name_origin, later.name_scale))
+                    self.assertEqual(names, before)
 
     def test_eleven_byte_names_clear_the_body_without_moving_or_repaginating_it(self):
         layout = authored_dialogue()
@@ -218,7 +352,7 @@ class SpeakerPlacementTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user library is not present')
     def test_original_roster_and_parent_teacher_sequence_clear_dialogue_and_portraits(self):
-        from shs_runtime.content import ContentError, ContentLibrary
+        from exp_runtime.content import ContentError, ContentLibrary
 
         with ContentLibrary(Path('.shs-library')) as library:
             try:
@@ -262,8 +396,8 @@ class BadgeDrawingTests(unittest.TestCase):
         os.environ['SDL_VIDEODRIVER'] = 'dummy'
         os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.desktop import Desktop
-        from shs_runtime.desktop_text import BitmapTextRenderer
+        from exp_runtime.desktop import Desktop
+        from exp_runtime.desktop_text import BitmapTextRenderer
 
         pygame.display.init()
         pygame.display.set_mode((480, 720))

@@ -3,10 +3,10 @@ import json
 from pathlib import Path
 import unittest
 
-from shs_runtime.content import ContentLibrary, EpisodeResources, ExpArchive, digest
-from shs_runtime.football import FootballTarget, Play
-from shs_runtime.minigames import NativeRandom
-from shs_runtime.runtime import SaveError, Session
+from exp_runtime.content import ContentLibrary, EpisodeResources, ExpArchive, digest
+from exp_runtime.shs.football import FootballTarget, Play
+from exp_runtime.randomness import NativeRandom
+from exp_runtime.runtime import SaveError, Session
 from test_runtime import Resources, host_call, text_words
 from test_vm import program
 

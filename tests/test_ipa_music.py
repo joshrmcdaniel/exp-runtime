@@ -12,10 +12,11 @@ from unittest.mock import patch
 import warnings
 from zipfile import ZipFile
 
-from shs_runtime.audio import IOS_DOWNLOADED_MUSIC, music_cue
-from shs_runtime.cli import main
-from shs_runtime.content import ContentError, ContentLibrary, NATIVE_MEMBER, digest, import_game
-from shs_runtime.runtime import Session
+from exp_runtime.audio import music_cue
+from exp_runtime.shs.audio import IOS_DOWNLOADED_MUSIC
+from exp_runtime.cli import main
+from exp_runtime.content import ContentError, ContentLibrary, NATIVE_MEMBER, digest, import_game
+from exp_runtime.runtime import Session
 from test_content import FAKE_NATIVE, archive, metadata
 from test_ipa import ASSETS, ASSET_DATA, LOCAL_IPA, make_ipa
 from test_vm import program
@@ -48,12 +49,32 @@ class IPAMusicImportTests(unittest.TestCase):
         with ZipFile(self.ipa, 'a') as ipa:
             ipa.writestr(ASSETS + '8201', b'preferred IPA music')
         make_music_apk(self.apk)
-        profile = patch('shs_runtime.content.NATIVE_SHA256', digest(FAKE_NATIVE))
+        profile = patch('exp_runtime.shs.content.NATIVE_SHA256', digest(FAKE_NATIVE))
         profile.start(); self.addCleanup(profile.stop)
+
+    def test_legacy_ipa_manifest_upgrades_only_when_music_is_added(self):
+        manifest = import_game(self.ipa, [], self.path)
+        manifest.update(format='shs-content-library', version=2)
+        del manifest['game']
+        path = self.path / 'library.json'
+        path.write_text(json.dumps(manifest))
+        with ContentLibrary(self.path) as library:
+            original = Session(library.open_episode('Test.exp'))
+            original.advance()
+            saved = original.snapshot(); saved['format'] = 'shs-runtime-save'
+            self.assertEqual(library.add_music_apk(self.apk), 9)
+            self.assertEqual(library.manifest['version'], 3)
+            self.assertEqual(library.manifest['format'], 'shs-content-library')
+        with ContentLibrary(self.path) as reopened:
+            self.assertEqual(reopened.missing_music_ids, ())
+            self.assertEqual(reopened.read_asset(8201), b'preferred IPA music')
+            self.assertEqual(reopened.read_asset(8217), b'authored music 8217')
+            restored = Session.from_snapshot(reopened.open_episode('Test.exp'), saved)
+            self.assertEqual(restored.snapshot(), original.snapshot())
 
     def test_optional_import_preserves_ipa_precedence_namespaces_and_relocation(self):
         manifest = import_game(self.ipa, [], self.path, music_apk=self.apk)
-        self.assertEqual(manifest['version'], 3)
+        self.assertEqual((manifest['format'], manifest['version'], manifest['game']), ('exp-content-library', 1, 'shs'))
         self.assertEqual(len(manifest['episodes']), 1)
         self.assertNotIn('apk', manifest)
         moved = self.root / 'moved'; self.path.rename(moved)
@@ -121,8 +142,8 @@ class IPAMusicImportTests(unittest.TestCase):
                     library.add_music_apk(self.apk)
                 self.assertEqual((self.path / 'library.json').read_bytes(), before)
                 self.assertEqual(sorted(p.name for p in (self.path / 'content').iterdir()), files)
-                self.assertFalse(list(self.path.glob('.shs-import-*')))
-        self.assertFalse(list(self.root.glob('.shs-import-*')))
+                self.assertFalse(list(self.path.glob('.exp-import-*')))
+        self.assertFalse(list(self.root.glob('.exp-import-*')))
 
     def test_manifest_and_music_source_tampering_are_rejected(self):
         manifest = import_game(self.ipa, [], self.path, music_apk=self.apk)
@@ -160,11 +181,11 @@ class IPAMusicImportTests(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in (self.path / 'content').iterdir()), files)
 
     def test_apk_libraries_cannot_receive_an_ipa_music_supplement(self):
-        with self.assertRaisesRegex(ContentError, 'only supplement an IPA'):
+        with self.assertRaisesRegex(ContentError, 'only supplement an SHS IPA'):
             import_game(self.apk, [], self.path, music_apk=self.apk)
         self.assertFalse(self.path.exists())
         import_game(self.apk, [], self.path)
-        with ContentLibrary(self.path) as library, self.assertRaisesRegex(ContentError, 'only supplement an IPA'):
+        with ContentLibrary(self.path) as library, self.assertRaisesRegex(ContentError, 'only supplement an SHS IPA'):
             library.add_music_apk(self.apk)
 
     def test_cli_supports_optional_music_during_import_and_afterward(self):
@@ -186,18 +207,19 @@ class IPAMusicImportTests(unittest.TestCase):
     def test_desktop_drop_accepts_ipa_and_optional_apk_in_either_order(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.application import Application
+        from exp_runtime.application import Application
         pygame.display.init(); self.addCleanup(pygame.quit)
         for order in ((self.ipa, self.apk), (self.apk, self.ipa)):
             # Exercise the real background importer without requiring fonts
             # or original menu art in this authored-container test.
             with ThreadPoolExecutor(max_workers=1) as executor:
                 app = Application.__new__(Application)
+                app.selected_game = 'shs'
                 app.job, app.library, app.executor = None, None, executor
                 app.directory = self.root / order[0].suffix[1:]
                 app.import_paths(order)
                 manifest = app.job.result(timeout=10)
-                self.assertEqual(manifest['version'], 3)
+                self.assertEqual((manifest['format'], manifest['version'], manifest['game']), ('exp-content-library', 1, 'shs'))
                 self.assertEqual(manifest['episodes'][0]['name'], 'Test.exp')
                 with ContentLibrary(app.directory) as library:
                     self.assertEqual(library.read_asset(8201), b'preferred IPA music')
@@ -210,7 +232,7 @@ class LocalIPAMusicTests(unittest.TestCase):
     def test_menu_adds_original_music_preserves_live_story_and_plays_all_missing_cues(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.application import Application
+        from exp_runtime.application import Application
         from test_runtime import answer_screen
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as android:

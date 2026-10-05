@@ -4,6 +4,12 @@ Revision: 2026-09-13. Companion to [VM_SPEC.md](VM_SPEC.md) and [SCHEMA.md](SCHE
 
 This document inventories **every explicit service ID 0–100** in Android 1.0.9 `FUN_0009fe3c`. It includes verified state contracts and unresolved helper calls. Rows marked unresolved are research boundaries, not implemented semantics. Android default cases must not automatically be assumed to have the same meaning in an iOS build.
 
+The EXP Runtime launcher selects the game's host profile from its validated
+library. SHS-specific handlers live in `exp_runtime/shs/services.py`;
+[COD.md](COD.md) records CoD's separate handlers and native evidence. Both games
+support service 15's named dialogue; SHS also implements its verified optional
+negative prefix. Their service-100 paths differ and must not be interchanged.
+
 ## 1. Shared calling convention and notation
 
 See [VM yield ABI](VM_SPEC.md#7-yield--host-call-abi) for the complete transition rules. The argument frame is `S[SP-count:SP]`; `a1` is its first word. Arguments are signed 16-bit unless the handler explicitly narrows or interprets their bits differently. Completion removes the entire frame and puts a word in R; the script uses opcode `0x21` to push it. Pending input retains the frame and the already-advanced PC.
@@ -43,14 +49,14 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 | 11 (`0b`) | a1, a2 | Sets panel background base a2, variant a1 through `FUN_000a92f4`. | 0 | C (static background) |
 | 12 (`0c`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
 | 13 (`0d`) | optional negative mode, text, character, optional override | Dialogue path; raw text reference is subsequently substituted by the panel. Section 4 describes argument positions. | pending | P |
-| 14 (`0e`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
-| 15 (`0f`) | optional negative prefix, then T(text1), T(text2) | Sets panel mode 3, two substituted text fields, starts display, waits; shares tail with 76. | pending | X |
+| 14 (`0e`) | none required by case; supplied words ignored | Explicit native default path, verified in Android and SHS iOS; ordinary completion removes the supplied frame without changing panel/game state. | 0 | C |
+| 15 (`0f`) | optional negative prefix, then T(speaker), T(body); extra words ignored | Named dialogue in panel mode 3; prefix is skipped without applying service-13 text styling. Shares presentation and callback with 76. [Contract](STORY_SERVICES.md#shs-service-15). | 0 on acknowledgement | P |
 | 16 (`10`) | a1 | Queues a screen-transition selector at scene `+0x1c1c`. Title, message and dialogue panels (8/13/33/65/76) consume it on final acknowledgement; selector 20 draws a libc random bit for transition 1/2. Other panel paths remain partial. | 0 | C (queue; callbacks partial) |
 | 17 (`11`) | T(1), T(2), T(3) | Text input: title, prompt, initial value; UI factory type 15, same as 40. | string handle 0x7ff5 | P |
 | 18 (`12`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | C (zero args) |
 | 19 (`13`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
 | 20 (`14`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
-| 21 (`15`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
+| 21 (`15`) | none required by case; supplied words ignored | Same verified Android/SHS iOS default completion as 14; no panel, score or random effect. | 0 | C |
 | 22 (`16`) | destination a1, format t(2), values... | Formats `%d` / `%s` into packed VM memory via `FUN_0009f838`; destination capacity is caller-managed. | 0 | X |
 | 23 (`17`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
 | 24 (`18`) | t(1), t(2) | String equality through `FUN_0009f56c` / `FUN_0005edd8`. | 0 / 1 | C |
@@ -133,9 +139,32 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 
 IDs beyond 100 take the inspected dispatcher's default path. Their original meanings and presence in other builds are unknown. The Python host intentionally does not treat unknown IDs as successful no-ops.
 
+### Imported SHS corpus follow-up
+
+The supplied 271 external SHS EXPs contain 974 scripts and 55 distinct service
+numbers. The previously unhandled numbers found in these scripts were 14, 15,
+21 and 100. Service 15 has 396 calls across 62 episodes; 14 has 14 calls in the
+two Prince Plot episodes; 21 has four calls in four episodes. The runtime now
+implements those three contracts. This inventory is a static call-site scan,
+not proof of every branch, argument variant or minigame mode being supported.
+
+Ghidra MCP confirms Android jump entries `0009fedc` (14) and `0009fef8` (21)
+both target `000a00f8`, then the return-zero/frame-pop tail at `000a0058`.
+SHS iOS entries `0006de74` and `0006de90` both hold relative offset `0x3c80`
+from table base `0006de3c`, targeting `00071abc`; `00071ad4` narrows its default
+sentinel to R=0 and removes the frame. Neither default implements the dialogue
+or diagnostic operation that its caller's arguments might suggest. Only these
+explicitly verified SHS IDs were enabled; unknown IDs still retain their frames.
+
+SHS service 100 has 23 calls across 15 supplied episodes and remains pending.
+It is not CoD 1.3.4's default path: SHS reads a URL and flag, sets a scene flag
+when requested, and saves state before platform handoff. SHS iOS names the
+helpers `saveGame` and `exitAndShowURL`; Android calls `0008b618` and `000db5e0`.
+Its external-application lifecycle and resume flag still need implementation.
+
 ## 3. Verified state-service contracts
 
-These contracts define the subset implemented in [engine.py](../src/shs_runtime/engine.py). The implementation checks exact argument counts for these fixed forms. Persistence, rendering, and other noted native side effects are separate from its in-memory state model.
+These contracts define the subset implemented in [engine.py](../src/exp_runtime/engine.py). The implementation checks exact argument counts for these fixed forms. Persistence, rendering, and other noted native side effects are separate from its in-memory state model.
 
 ### 3.1 Numeric variables
 

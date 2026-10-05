@@ -15,10 +15,10 @@ from zipfile import ZipFile
 
 from PIL import Image
 
-from shs_runtime.content import (ContentError, ContentLibrary, IOS_PROFILE,
+from exp_runtime.content import (ContentError, ContentLibrary, IOS_PROFILE,
                                  digest, import_game, is_bundled)
-from shs_runtime.ios_fonts import FACES, resolve_face
-from shs_runtime.fonts import FontError
+from exp_runtime.ios_fonts import FACES, resolve_face
+from exp_runtime.fonts import FontError
 from test_content import FAKE_NATIVE, archive, metadata
 from test_ui_assets import image_pack, node
 from test_vm import program
@@ -93,9 +93,9 @@ class IPAImportTests(unittest.TestCase):
 
     def test_import_without_fonts_preserves_native_ids_and_relocates(self):
         duplicate = self.root / 'duplicate.exp'; duplicate.write_bytes(self.episode)
-        with patch('shs_runtime.ios_fonts.resolve_face', side_effect=AssertionError('import requested a font')):
+        with patch('exp_runtime.ios_fonts.resolve_face', side_effect=AssertionError('import requested a font')):
             manifest = import_game(self.source, [duplicate], self.library)
-        self.assertEqual((manifest['version'], manifest['profile']), (2, IOS_PROFILE))
+        self.assertEqual((manifest['version'], manifest['profile']), (1, IOS_PROFILE))
         self.assertNotIn('apk', manifest)
         self.assertEqual(len(manifest['episodes']), 1)
         self.assertTrue(is_bundled(manifest['episodes'][0]))
@@ -170,7 +170,7 @@ class IPAImportTests(unittest.TestCase):
                 with self.assertRaises(ContentError):
                     import_game(self.source, [], self.library)
                 self.assertFalse(self.library.exists())
-                self.assertFalse(list(self.root.glob('.shs-import-*')))
+                self.assertFalse(list(self.root.glob('.exp-import-*')))
 
     def test_required_asset_absence_format_and_frame_ranges_are_checked(self):
         replacements = ((13, None), (12, b'invalid strings'), (289, ASSET_DATA[495]),
@@ -190,7 +190,7 @@ class IPAImportTests(unittest.TestCase):
                 with self.assertRaisesRegex(ContentError, str(resource)):
                     import_game(self.source, [], self.library)
                 self.assertFalse(self.library.exists())
-                self.assertFalse(list(self.root.glob('.shs-import-*')))
+                self.assertFalse(list(self.root.glob('.exp-import-*')))
 
     def test_hash_path_and_profile_tampering_are_rejected(self):
         manifest = import_game(self.source, [], self.library)
@@ -199,7 +199,7 @@ class IPAImportTests(unittest.TestCase):
             changed = json.loads(json.dumps(manifest)); changed['ipa'][field] = value
             path.write_text(json.dumps(changed))
             with self.subTest(field=field), self.assertRaises(ContentError): ContentLibrary(self.library)
-        for field, value in (('version', 1), ('profile', 'shs-android-1.0.9'), ('apk', manifest['ipa'])):
+        for field, value in (('version', 2), ('profile', 'shs-android-1.0.9'), ('apk', manifest['ipa'])):
             changed = dict(manifest, **{field: value})
             path.write_text(json.dumps(changed))
             with self.subTest(field=field), self.assertRaises(ContentError): ContentLibrary(self.library)
@@ -233,32 +233,32 @@ class IOSFontDiscoveryTests(unittest.TestCase):
     def test_installed_original_precedes_system_default(self):
         face = FACES['ArialRoundedMTBold']
         font = SimpleNamespace(getname=lambda: (face.family, face.style))
-        with patch('shs_runtime.ios_fonts._candidates', return_value=[(Path('original.ttf'), 0)]), \
-             patch('shs_runtime.ios_fonts.ImageFont.truetype', return_value=font), \
-             patch('shs_runtime.ios_fonts._system_default', side_effect=AssertionError('unnecessary fallback')):
+        with patch('exp_runtime.ios_fonts._candidates', return_value=[(Path('original.ttf'), 0)]), \
+             patch('exp_runtime.ios_fonts.ImageFont.truetype', return_value=font), \
+             patch('exp_runtime.ios_fonts._system_default', side_effect=AssertionError('unnecessary fallback')):
             self.assertEqual(resolve_face(face), (Path('original.ttf'), 0))
 
     def test_fontconfig_substitute_is_rejected_before_configured_default(self):
         face = FACES['ArialRoundedMTBold']
         other = SimpleNamespace(getname=lambda: ('Unrequested substituted font', 'Regular'))
         default = SimpleNamespace(getname=lambda: ('System UI', 'Regular'))
-        with patch('shs_runtime.ios_fonts._candidates', return_value=[(Path('substitute.ttf'), 0)]), \
-             patch('shs_runtime.ios_fonts._system_default', return_value=[(Path('system.ttc'), 2)]), \
-             patch('shs_runtime.ios_fonts.ImageFont.truetype', side_effect=[other, default]), \
+        with patch('exp_runtime.ios_fonts._candidates', return_value=[(Path('substitute.ttf'), 0)]), \
+             patch('exp_runtime.ios_fonts._system_default', return_value=[(Path('system.ttc'), 2)]), \
+             patch('exp_runtime.ios_fonts.ImageFont.truetype', side_effect=[other, default]), \
              self.assertLogs(level='WARNING'):
             self.assertEqual(resolve_face(face), (Path('system.ttc'), 2))
 
     def test_unreadable_original_uses_system_default(self):
         default = SimpleNamespace(getname=lambda: ('System UI', 'Bold'))
-        with patch('shs_runtime.ios_fonts._candidates', return_value=[(Path('broken.ttf'), 0)]), \
-             patch('shs_runtime.ios_fonts._system_default', return_value=[(Path('system.ttf'), 0)]), \
-             patch('shs_runtime.ios_fonts.ImageFont.truetype', side_effect=[OSError('unreadable'), default]), \
+        with patch('exp_runtime.ios_fonts._candidates', return_value=[(Path('broken.ttf'), 0)]), \
+             patch('exp_runtime.ios_fonts._system_default', return_value=[(Path('system.ttf'), 0)]), \
+             patch('exp_runtime.ios_fonts.ImageFont.truetype', side_effect=[OSError('unreadable'), default]), \
              self.assertLogs(level='WARNING'):
             self.assertEqual(resolve_face(FACES['TrebuchetMS_Bold']), (Path('system.ttf'), 0))
 
     def test_no_fonts_reports_the_actual_missing_system_dependency(self):
-        with patch('shs_runtime.ios_fonts._candidates', return_value=[]), \
-             patch('shs_runtime.ios_fonts._system_default', return_value=[]):
+        with patch('exp_runtime.ios_fonts._candidates', return_value=[]), \
+             patch('exp_runtime.ios_fonts._system_default', return_value=[]):
             with self.assertRaisesRegex(FontError, 'No usable system font'):
                 resolve_face(FACES['ArialMT'])
 
@@ -269,8 +269,8 @@ LOCAL_IPA = Path('decomp/shs/SurvivingHighSchoolPaid1.4.2.ipa')
 @unittest.skipUnless(LOCAL_IPA.is_file(), 'optional player IPA is absent')
 class LocalIPATests(unittest.TestCase):
     def test_actual_system_default_renders_when_original_faces_are_absent(self):
-        from shs_runtime import ios_fonts
-        from shs_runtime.fonts import TextStyle, layout_text
+        from exp_runtime import ios_fonts
+        from exp_runtime.fonts import TextStyle, layout_text
         original_candidates = ios_fonts._candidates
         # Keep fontconfig's generic lookup available on Linux while hiding
         # the named game faces. No fonts are copied into the authored fixture.
@@ -299,9 +299,9 @@ class LocalIPATests(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is absent')
     def test_bundled_music_and_shared_track_cues_play_through_desktop(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.audio import music_cue
-        from shs_runtime.runtime import Session
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.audio import music_cue
+        from exp_runtime.runtime import Session
+        from exp_runtime.desktop import Desktop
         import pygame
         self.addCleanup(pygame.quit)
         with tempfile.TemporaryDirectory() as tmp:
@@ -326,8 +326,8 @@ class LocalIPATests(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is absent')
     def test_new_girl_name_entry_timer_and_save_restore(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.runtime import Session
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.runtime import Session
+        from exp_runtime.desktop import Desktop
         from test_runtime import answer_screen
         import pygame
         self.addCleanup(pygame.quit)
@@ -340,6 +340,9 @@ class LocalIPATests(unittest.TestCase):
                     ui.tick(3000); ui.render()
                     self.assertIsNone(ui.error)
                     s = ui.session; name = s.pending.name; seen.add(name)
+                    if name == 'dialogue':
+                        from test_shared_dialogue import check_original_page
+                        check_original_page(self, s)
                     saved = s.snapshot()
                     pixels = pygame.image.tobytes(ui.canvas, 'RGBA')
                     ui.session = s = Session.from_snapshot(s.resources, saved)
@@ -367,8 +370,8 @@ class LocalIPATests(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec('pygame'), 'desktop extra is absent')
     def test_football_targets_feedback_and_grid_use_ipa_assets(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        from shs_runtime.runtime import Session
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.runtime import Session
+        from exp_runtime.desktop import Desktop
         from test_football import resources as football_resources, start_play, wait_for
         from test_word_grid import tutorial_resources, play_phase
         import pygame

@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 import unittest
 
-from shs_runtime.engine import EngineState
-from shs_runtime.relationships import RelationshipAnimation, RelationshipChange
-from shs_runtime.runtime import SaveError, Session
+from exp_runtime.engine import EngineState
+from exp_runtime.relationships import RelationshipAnimation, RelationshipChange
+from exp_runtime.runtime import SaveError, Session
 from test_runtime import Resources, answer_screen, host_call, text_words
 from test_vm import program
 
@@ -62,7 +62,7 @@ class RelationshipTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content unavailable')
     def test_football_star_adam_relationship_follows_the_original_script(self):
-        from shs_runtime.content import ContentLibrary
+        from exp_runtime.content import ContentLibrary
         with ContentLibrary(Path('.shs-library')) as library:
             session = Session(library.open_episode('Football Star'))
             session.advance()
@@ -218,8 +218,8 @@ class RelationshipTests(unittest.TestCase):
     def test_apk_art_gain_loss_pause_and_mid_animation_pixel_restore(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as library:
             r = library.open_episode('Football Star')

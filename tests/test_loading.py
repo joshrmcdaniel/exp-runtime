@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 import unittest
 
-from shs_runtime.engine import EngineAction
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.vm import VMError
+from exp_runtime.engine import EngineAction
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.vm import VMError
 from test_runtime import Resources, answer_screen, host_call
 from test_vm import program
 
@@ -121,7 +121,7 @@ class LoadingTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content required')
     def test_new_girl_bundled_and_imported_loading_frames_resume_original_script(self):
-        from shs_runtime.content import ContentLibrary
+        from exp_runtime.content import ContentLibrary
         with ContentLibrary(Path('.shs-library')) as lib:
             for selector, pc, args in (('The_New_Girl.exp', 60, ()), ('SHS_The_New_Girl.exp', 61, (1,))):
                 with self.subTest(episode=selector):
@@ -166,8 +166,8 @@ class LoadingTests(unittest.TestCase):
     def test_original_frames_render_and_input_focus_pause_and_restore_preserve_timer(self):
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
         self.addCleanup(pygame.quit)
         with ContentLibrary(Path('.shs-library')) as lib:
             r = lib.open_episode('Football Star')

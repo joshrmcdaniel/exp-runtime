@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import BadZipFile, ZipFile
 
-from shs_runtime.content import (ContentError, ContentLibrary, ExpArchive, NATIVE_MEMBER,
+from exp_runtime.content import (ContentError, ContentLibrary, ExpArchive, NATIVE_MEMBER,
                               digest, import_game)
 from test_vm import program
 
@@ -131,7 +131,7 @@ class ImportTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.profile = patch('shs_runtime.content.NATIVE_SHA256', digest(FAKE_NATIVE))
+        self.profile = patch('exp_runtime.shs.content.NATIVE_SHA256', digest(FAKE_NATIVE))
         self.profile.start()
         self.addCleanup(self.profile.stop)
         self.data = archive({1: metadata(), 25001: program(0x33).to_bytes(),
@@ -165,6 +165,20 @@ class ImportTests(unittest.TestCase):
             self.assertEqual(resources.program(25001).instructions[0].opcode, 0x33)
             self.assertEqual(resources.identity['episode_sha256'], digest(self.data))
 
+    def test_legacy_android_manifest_retains_profile_and_resources(self):
+        target = self.root / 'legacy'
+        manifest = import_game(self.apk, [], target)
+        manifest.update(format='shs-content-library', version=1)
+        del manifest['game']
+        path = target / 'library.json'
+        path.write_text(json.dumps(manifest))
+        before = path.read_bytes()
+        with ContentLibrary(target) as library:
+            self.assertEqual((library.game_id, library.kind), ('shs', 'apk'))
+            self.assertEqual(library.open_episode('Test.exp').read_asset(42), b'base image')
+            self.assertEqual(library.read_asset(8201), b'music bytes')
+        self.assertEqual(path.read_bytes(), before)
+
     def test_failed_import_is_atomic_and_preserves_existing_library(self):
         target = self.root / 'library'
         broken = self.root / 'broken.exp'
@@ -172,7 +186,7 @@ class ImportTests(unittest.TestCase):
         with self.assertRaises(ContentError):
             import_game(self.apk, [broken], target)
         self.assertFalse(target.exists())
-        self.assertFalse(list(self.root.glob('.shs-import-*')))
+        self.assertFalse(list(self.root.glob('.exp-import-*')))
         import_game(self.apk, [], target)
         original = (target / 'library.json').read_bytes()
         with self.assertRaisesRegex(ContentError, 'already exists'):
@@ -181,7 +195,7 @@ class ImportTests(unittest.TestCase):
 
     def test_unknown_native_profile_and_modified_content_are_rejected(self):
         target = self.root / 'library'
-        with patch('shs_runtime.content.NATIVE_SHA256', '0' * 64), self.assertRaisesRegex(ContentError, 'Unsupported game APK'):
+        with patch('exp_runtime.shs.content.NATIVE_SHA256', '0' * 64), self.assertRaisesRegex(ContentError, 'Unsupported game APK'):
             import_game(self.apk, [], target)
         manifest = import_game(self.apk, [], target)
         with (target / manifest['apk']['file']).open('ab') as stream:

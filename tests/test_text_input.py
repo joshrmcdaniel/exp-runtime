@@ -9,13 +9,13 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from shs_runtime.fonts import BitmapFont, Glyph
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.text_input import (
+from exp_runtime.fonts import BitmapFont, Glyph
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.text_input import (
     CURSOR_FONT, MAX_NAME_LENGTH, NAME_ENTRY_ERROR, NAME_FONT,
     accept_name_character, validate_name,
 )
-from shs_runtime.ui_assets import Layout, LayoutBank, LayoutNode
+from exp_runtime.ui_assets import Layout, LayoutBank, LayoutNode
 from test_runtime import Resources, host_call, text_words
 from test_vm import program
 
@@ -110,7 +110,7 @@ class DesktopInputTests(unittest.TestCase):
 
     def desktop(self, default=''):
         import pygame
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.desktop import Desktop
 
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -241,8 +241,8 @@ class DesktopInputTests(unittest.TestCase):
     @unittest.skipUnless(Path('.shs-library/library.json').is_file(), 'user content is absent')
     def test_player_apk_fonts_layouts_alert_and_callback(self):
         import pygame
-        from shs_runtime.content import ContentLibrary
-        from shs_runtime.desktop import Desktop
+        from exp_runtime.content import ContentLibrary
+        from exp_runtime.desktop import Desktop
 
         with ContentLibrary(Path('.shs-library')) as library:
             r = library.open_episode('The_New_Girl.exp')

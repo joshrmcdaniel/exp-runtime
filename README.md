@@ -1,15 +1,17 @@
-# SHS Runtime
+# EXP Runtime
 
-An experimental compatible engine for **Surviving High School**, aiming to
+An experimental compatible engine for **Surviving High School** and **Cause of Death**, aiming to
 reproduce the original interface and gameplay. It executes the original KiWi
 scripts and reads graphics, fonts, audio and episode data from files supplied
 by each player.
 
-You need your own **SHS Android 1.0.9 APK** or **SHS IPA with compatible assets**,
-plus any additional **EXP episodes** you want to play. The importer reads those
+Choose a game in the launcher, then supply its assets: an **SHS Android 1.0.9 APK**,
+**SHS IPA**, or **Cause of Death IPA**, plus any additional **EXP episodes**
+for that game. The importer reads those
 files locally. Game content is not included in this project or downloaded by it.
-IPA import checks the SHS bundle identifier and required assets; its version
-number is informational. See [IPA support](docs/IPA.md) for details.
+IPA import checks the game's bundle identifier and required assets; its version
+number is informational. See [SHS IPA support](docs/IPA.md) and
+[Cause of Death support](docs/COD.md) for details.
 
 ## Download an app
 
@@ -40,9 +42,9 @@ uv prepares the local environment and installs the locked dependencies.
 
 | Platform | App to open |
 | --- | --- |
-| macOS | `dist/desktop/SHS Runtime.app` |
-| Windows | `dist/desktop/SHS Runtime/SHS Runtime.exe` |
-| Linux | `dist/desktop/SHS Runtime/SHS Runtime` |
+| macOS | `dist/desktop/EXP Runtime.app` |
+| Windows | `dist/desktop/EXP Runtime/EXP Runtime.exe` |
+| Linux | `dist/desktop/EXP Runtime/EXP Runtime` |
 
 Build on the operating system where you will play. Keep the whole app or
 executable directory together: it includes Python and its dependencies.
@@ -53,19 +55,25 @@ but full gameplay still needs testing on each system.
 You can also run directly from source:
 
 ```sh
-uv run --locked --extra desktop shs
+uv run --locked --extra desktop exp-runtime
 ```
 
 ## Add your game files
 
-1. Launch the app and choose your APK or IPA on the setup screen.
+1. Launch the app, select **Surviving High School** or **Cause of Death**, then
+   choose that game's APK/IPA or open its existing library.
 2. Add EXP files or an episode folder through Options, or drag them onto the
-   menu. The game's bundled episodes, including Football Star, are imported
-   automatically.
+   menu. SHS's bundled stories, including Football Star, or CoD's Volume One
+   are imported automatically.
 3. Select an episode in Play/Resume. Imported episodes and progress persist
    when you close the app.
 
-For an IPA, you can optionally supply your Android 1.0.9 APK through **Options →
+Use **Options → Switch Game** to return to the chooser. Each game has its own
+library, preferences and saves. Shared asset IDs never pull artwork from the
+other game. EXP files do not reliably identify their game, so add them to the
+correct selected library.
+
+For an SHS IPA, you can optionally supply your Android 1.0.9 APK through **Options →
 Content Library → Add APK Music** to restore music the iOS app downloaded
 separately. IPA artwork and installed original fonts keep priority, and your
 IPA saves remain compatible. See [IPA import](docs/IPA.md#optional-apk-music)
@@ -87,9 +95,14 @@ stories, not five dialogue translations. Existing progress stays compatible.
 >     ...
 > ```
 
-If your episode folder includes the original `shs_options.sav`, its category
-catalog supplies the original season/story groups. It can also be added
-separately. Without that optional file, unknown groups use numeric pack names.
+If your episode folder includes the original `shs_options.sav` (SHS) or
+`cod_options.sav` (CoD), its catalog supplies the original season, volume and
+story groups. You can also add that file separately through **Add Episodes**
+or drag-and-drop. Reimporting the folder updates these names without adding
+duplicate copies of identical EXPs or resetting progress. Episodes absent from
+the supplied catalog keep numeric pack names.
+This works for existing libraries too, including SHS libraries imported from
+either an APK or an IPA; both use the same `shs_options.sav` catalog.
 
 Existing libraries from `exp-decoder-python` still work: choose **Open Library**
 and select the existing library directory. It can stay outside this project.
@@ -97,6 +110,17 @@ Existing Android content identities and saves are preserved. IPA libraries
 use a separate source profile and installed fonts, falling back to the system
 default when an original face is absent. See [runtime setup](docs/RUNTIME.md)
 for paths, controls, formats and command-line import.
+
+The Python package is now `exp_runtime`; the primary commands are `exp-runtime`
+and `exp-tool`. The `shs` and `shs-tool` commands remain as compatibility aliases.
+The launcher discovers old SHS library locations without moving player files.
+
+For example, import CoD into a separate library and open it directly:
+
+```sh
+uv run --locked exp-tool import --game cod --ipa /path/to/CoD.ipa --episodes /path/to/CoD-Episodes --library /path/to/cod-library
+uv run --locked --extra desktop exp-runtime --game cod --library /path/to/cod-library
+```
 
 ## Current state
 
@@ -111,6 +135,15 @@ game have been exercised. Complete episode playback and full 1:1 visual/timing
 equivalence are still being verified. Unsupported services stop explicitly
 with their scene, service and program counter. Current limits are recorded in
 [RUNTIME.md](docs/RUNTIME.md) and [ENGINE_ABI.md](docs/ENGINE_ABI.md).
+
+CoD's Volume One opening has been exercised through ordinary/timed choices,
+named dialogue and save restoration. Its nine bundled music sources play
+directly. This is initial support, not a claim that every CoD episode finishes;
+unverified services and presentation differences are tracked in [COD.md](docs/COD.md).
+
+Game-specific import, UI/audio bindings and services live in
+`src/exp_runtime/shs/` and `src/exp_runtime/cod/`. The EXP parser, KiWi VM,
+session/save system, common panels and launcher remain shared.
 
 ## Specifications and development
 

@@ -4,7 +4,7 @@ Revision: 2026-09-13. Profile: the local **Surviving High School** corpus and th
 
 The ordinary archive, record, compression, and metadata layouts account for every indexed payload in the audited corpus. Native grouped resources and the EXPD prefix are documented separately because no matching fixtures have been identified. This does not establish compatibility with every other game or iOS engine version.
 
-The compatible runtime's strict reader is [`content.ExpArchive`](../src/shs_runtime/content.py). Its user-supplied APK/episode library, resource-bank selection, supported-input restrictions, and new JSON save format are documented in [RUNTIME.md](RUNTIME.md); those are separate from the EXP wire format. Current reader restrictions are listed in section 10 below. Evidence snapshot names refer to private research files; see [PROVENANCE.md](PROVENANCE.md).
+The compatible runtime's strict reader is [`content.ExpArchive`](../src/exp_runtime/content.py). Its user-supplied APK/episode library, resource-bank selection, supported-input restrictions, and new JSON save format are documented in [RUNTIME.md](RUNTIME.md); those are separate from the EXP wire format. Current reader restrictions are listed in section 10 below. Evidence snapshot names refer to private research files; see [PROVENANCE.md](PROVENANCE.md).
 
 ## 1. Evidence and notation
 
@@ -324,3 +324,17 @@ The standalone runtime uses the strict `content.ExpArchive` reader:
 The earlier heuristic extractor and Ren'Py converter remain in the original
 research project. Their legacy dictionary and metadata interpretations do not
 define this runtime's reader or the EXP wire format.
+
+## 11. Runtime libraries and game identity
+
+The EXP wire format is shared by SHS and CoD; its pack/episode numbers do not
+reliably identify a game. The selected runtime library supplies that identity.
+New `library.json` files use `format: exp-content-library`, `version: 1`, and
+`game: shs|cod`. Profiles are `shs-android-1.0.9`, `shs-ios-assets-v1` and
+`cod-ios-assets-v1`; the game, profile and source package must agree.
+
+Legacy `shs-content-library` versions 1 (APK), 2 (IPA) and 3 (IPA plus music
+APK) remain readable in place. Primary source and episode records retain
+complete SHA-256 identities; filenames use those hashes. SHS's optional music
+APK stays outside the save identity and never contributes artwork/scripts/fonts.
+See [IPA.md](IPA.md) and [COD.md](COD.md) for platform-specific resource contracts.

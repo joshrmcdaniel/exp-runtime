@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import tempfile
 import unittest
 
-from shs_runtime.content import ContentLibrary
-from shs_runtime.runtime import SaveError, Session
-from shs_runtime.vm import VMError
+from exp_runtime.content import ContentLibrary
+from exp_runtime.runtime import SaveError, Session
+from exp_runtime.vm import VMError
 from test_vm import program
 
 

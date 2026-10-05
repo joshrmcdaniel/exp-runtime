@@ -7,10 +7,10 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from shs_runtime.builtin_episode import FOOTBALL_SCRIPTS, extract_football
-from shs_runtime.content import ContentError, ContentLibrary, ExpArchive, digest, import_game, is_bundled
-from shs_runtime.minigames import NativeRandom
-from shs_runtime.runtime import Session
+from exp_runtime.shs.builtin_episode import FOOTBALL_SCRIPTS, extract_football
+from exp_runtime.content import ContentError, ContentLibrary, ExpArchive, digest, import_game, is_bundled
+from exp_runtime.randomness import NativeRandom
+from exp_runtime.runtime import Session
 from test_content import FAKE_NATIVE, archive, make_apk, metadata
 from test_runtime import answer_screen
 from test_vm import program
@@ -41,7 +41,7 @@ class BuiltinExtractionTests(unittest.TestCase):
         self.apk = self.root / 'input.apk'
         make_apk(self.apk, archive({1: metadata(), 25001: program(0x33).to_bytes()}))
         add_base_story(self.apk)
-        self.profile = patch('shs_runtime.content.NATIVE_SHA256', digest(FAKE_NATIVE))
+        self.profile = patch('exp_runtime.shs.content.NATIVE_SHA256', digest(FAKE_NATIVE))
         self.profile.start(); self.addCleanup(self.profile.stop)
 
     def test_exact_scripts_deterministic_container_and_resource_namespaces(self):
@@ -161,7 +161,7 @@ class FootballStarContentTests(unittest.TestCase):
         import os
         os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
         try:
-            from shs_runtime.application import Application
+            from exp_runtime.application import Application
         except ModuleNotFoundError:
             self.skipTest('desktop extra is not installed')
         with tempfile.TemporaryDirectory() as tmp:

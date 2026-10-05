@@ -3,7 +3,7 @@
 See [MAINTAINERS.md](../MAINTAINERS.md) for contributor setup, reporting issues,
 compatibility requirements and pull request guidance.
 
-The project is self-contained under `src/shs_runtime`. It does not import
+The project is self-contained under `src/exp_runtime`. It does not import
 modules from the old decoder checkout or require any extracted game files
 to install, test its synthetic fixtures, or build an executable.
 
@@ -14,20 +14,20 @@ Use Python 3.10 or newer. From the project directory:
 ```sh
 uv sync --locked --extra desktop
 uv run --locked --extra desktop python -m unittest discover -s tests
-uv run --locked --extra desktop shs
+uv run --locked --extra desktop exp-runtime
 uv run --locked --extra build python tools/build_desktop.py
 uv run --locked --extra build python tools/package_desktop.py --label local --smoke-test
 ```
 
-`shs-tool` provides `import`, `list`, `play` and `trace`. It can also be invoked
-with `python -m shs_runtime`. The desktop entry point is `shs`, or
-`python -m shs_runtime.application`.
+`exp-tool` provides `import`, `list`, `play` and `trace`. It can also be invoked
+with `python -m exp_runtime`. The desktop entry point is `exp-runtime`, or
+`python -m exp_runtime.application`.
 
 ```sh
-uv run --locked shs-tool import --apk /path/to/game.apk --episodes /path/to/Episodes --library /path/to/library
-uv run --locked shs-tool list --library /path/to/library
-uv run --locked --extra desktop shs-tool play --library /path/to/library --episode "The New Girl"
-uv run --locked shs-tool trace /path/to/episode.exp
+uv run --locked exp-tool import --apk /path/to/game.apk --episodes /path/to/Episodes --library /path/to/library
+uv run --locked exp-tool list --library /path/to/library
+uv run --locked --extra desktop exp-tool play --library /path/to/library --episode "The New Girl"
+uv run --locked exp-tool trace /path/to/episode.exp
 ```
 
 The desktop menu supports adding further episodes to an existing library.
@@ -39,13 +39,14 @@ bounded diagnostic, not an automated episode playthrough.
 
 | Layer | Modules |
 | --- | --- |
-| Content and local import | `content`, `builtin_episode`, `episode_catalog` |
+| Content and local import | `content`, `shs.content`, `shs.builtin_episode`, `cod.content`, `episode_catalog` |
 | KiWi decoding and execution | `decode.bytecode`, `vm`, `trace` |
-| Host services and saved sessions | `engine`, `runtime` |
+| Host services and saved sessions | `engine`, `runtime`, `shs.services`, `cod.services` |
 | Dialogue, choices and panel clocks | `dialogue`, `choice`, `dialogue_animation`, `relationships`, `loading` |
-| Mini games | `minigames`, `word_grid`, `football` |
+| Mini games and random streams | `minigames`, `randomness`, `shs.word_grid`, `shs.football` |
 | Native formats and geometry | `fonts`, `ui_assets`, `atlas`, `menu` |
-| Desktop application | `application`, `desktop`, `desktop_*` |
+| Desktop application | `launcher`, `application`, `desktop`, `desktop_*`, `shs.desktop_*` |
+| Game bindings | `games`, `shs.profile`, `shs.ios_assets`, `cod.profile`, `cod.assets`, each game's `audio` |
 
 The engine/session state owns script-visible behavior. Rendering must not
 silently answer callbacks or change game results. Preserve pending frames,
@@ -83,16 +84,29 @@ does not establish complete episode playback or pixel/timing equivalence.
 
 | Research project | Standalone project |
 | --- | --- |
-| `src/exp_file` Python package | `src/shs_runtime` |
-| `exp-file` command | `shs-tool` |
-| `shs` desktop launcher | `shs` |
+| `src/exp_file` Python package | `src/exp_runtime` |
+| `exp-file` command | `exp-tool` |
+| `shs` desktop launcher | `exp-runtime` (`shs` alias retained) |
 | Heuristic AST/Ren'Py conversion | Retained only in the old research project |
 | Legacy extraction used by `trace` | Strict `content.ExpArchive` reader |
 
 Save JSON and library schemas do not contain Python module paths; their
-versions, resource IDs and content hashes remain unchanged. The application
-still uses the `SHS Runtime` user-data folder and existing launcher preference.
-Use **Open Library** to select a prior `.shs-library` in another directory.
+resource IDs and content hashes remain unchanged by the rename. New imports
+use the game-aware `exp-content-library` v1 schema; legacy SHS v1–3 manifests
+remain readable. Save version 15 accepts both the `shs-runtime-save` and
+`exp-runtime-save` format markers. Existing SHS save filenames are retained.
+Older IPA dialogue checkpoints reflow at their saved read offset for the
+shared v0.1.3 dialogue layout, without executing the pending VM call.
+The `EXP Runtime` launcher reads old `SHS Runtime` library locations, then
+remembers each game's location separately. See [MAIN_MENU.md](MAIN_MENU.md).
+
+Keep game-specific assets, imports and behavior in `exp_runtime/shs/` or
+`exp_runtime/cod/`. Shared code must resolve a resource only in the selected
+library, never search all games for a matching numeric ID. Both games use
+v0.1.3's SHS dialogue layout and renderer; adapt resource/font loading rather
+than selecting a separate layout by package type. Optional CoD
+integration tests read `decomp/cod/Cause+of+Death+(World)+1.3.4.ipa` into a
+temporary library; no proprietary fixtures are checked in.
 There is no need to move or reimport that content.
 
 ### Migration verification, 2026-09-13

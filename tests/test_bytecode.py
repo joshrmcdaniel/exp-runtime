@@ -1,7 +1,7 @@
 import struct
 import unittest
 
-from shs_runtime.decode.bytecode import decode_program, KiwiFormatError
+from exp_runtime.decode.bytecode import decode_program, KiwiFormatError
 
 
 def script(code, count, previous=b'', words=(0x4142, 0), extra=(0x1234,)):
