@@ -1,11 +1,11 @@
 # Changelog
 
-User-visible changes are recorded here. v0.4.0 is unreleased.
-
-## v0.4.0 (Unreleased)
+## v0.4.0
 
 ### Fixed
 
+- Fix Windows desktop builds stopping with `libgcc not found` while preparing
+  RAR import support.
 - Recognize classroom-quiz answer feedback in Choice hints, including Football
   Star's shuffled questions and finals. Correct answers turn green and wrong
   answers red without changing grades, timers, audio or saved state.
@@ -13,7 +13,7 @@ User-visible changes are recorded here. v0.4.0 is unreleased.
   badge, using the native 14-point Arial region for IPA fonts in both games.
   Substitute fonts fit the same region; Android bitmap labels retain their
   original layout rules.
-- Restore the held gear highlight, release-to-open behavior, 400 ms pause-menu
+- Restore the orange held gear, release-to-open behavior, 400 ms pause-menu
   expansion and original pause/menu click sounds in both games. Dragging off
   cancels the press; the entrance freezes story clocks and gates menu input.
 - Highlight held menu rows and choices until release, canceling when dragged
@@ -53,9 +53,8 @@ User-visible changes are recorded here. v0.4.0 is unreleased.
 ### Added
 
 - Optional **Options → Cheats → Choice hints** colors recognized near-term
-  score/relationship gains or correct quiz answers green, losses/wrong answers
-  or alternatives without a recognized gain red, and mixed effects amber.
-  Unknown effects retain the normal style.
+  score/relationship gains green, losses or alternatives without a recognized
+  gain red, and mixed effects amber. Unknown effects retain the normal style.
   The preview leaves the live story, timers, random state and saves untouched.
 - Import RAR4/RAR5 episode collections on desktop and iOS, with nested EXPs,
   catalogs, duplicate detection and atomic publication. Password-protected and

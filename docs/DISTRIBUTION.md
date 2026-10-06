@@ -76,6 +76,9 @@ without external codec dependencies or CLI tools. CI runs this before tests;
 the desktop builder includes its library and license notices. Source users
 can run the same helper, or use a system libarchive on Linux. macOS and iOS
 use their OS library, so Apple builds need no additional dependency download.
+The builder also disables unused POSIX regex support explicitly: libarchive
+3.8.9's automatic provider search otherwise requires libgcc on MSVC even with
+PCRE disabled.
 
 The build bundles Python and the runtime dependencies. No APK, IPA, EXPs, Ghidra,
 Ren'Py SDK, extracted resources or old checkout are required to build it.

@@ -52,10 +52,13 @@ def build(*, offline=False):
     disabled = ('MBEDTLS NETTLE OPENSSL LIBB2 LZ4 LZO LZMA ZSTD ZLIB BZip2 LIBXML2 EXPAT '
                 'WIN32_XMLLITE PCREPOSIX PCRE2POSIX LIBGCC CNG TAR CPIO CAT UNZIP '
                 'XATTR ACL ICONV TEST COVERAGE CLANG_TIDY').split()
+    # RAR import does not use regex. libarchive 3.8.9's AUTO provider search
+    # requires libgcc on MSVC even when both PCRE providers are disabled.
     args = ['cmake', '-S', str(source), '-B', str(directory / 'cmake'),
             '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON',
             f'-DCMAKE_INSTALL_PREFIX={install}', '-DCMAKE_INSTALL_LIBDIR=lib',
-            '-DENABLE_INSTALL=ON', *[f'-DENABLE_{name}=OFF' for name in disabled]]
+            '-DENABLE_INSTALL=ON', '-DPOSIX_REGEX_LIB=NONE',
+            *[f'-DENABLE_{name}=OFF' for name in disabled]]
     # Bundle the C runtime with the DLL instead of requiring a separately
     # installed Visual C++ runtime on the player's machine.
     if sys.platform == 'win32':

@@ -5,9 +5,6 @@ reproduce the original interface and gameplay. It executes the original KiWi
 scripts and reads graphics, fonts, audio and episode data from files supplied
 by each player.
 
-This checkout documents **v0.4.0 (unreleased)**. See the
-[changelog](CHANGELOG.md) for the features included in earlier releases.
-
 Choose a game in the launcher, then supply its assets: an **SHS Android 1.0.9 APK**,
 **SHS IPA**, or **Cause of Death IPA**, plus any additional **EXP episodes**
 for that game. The importer reads those
