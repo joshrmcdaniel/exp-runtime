@@ -20,7 +20,7 @@ system: `windows-x64`, `linux-x64`, `macos-arm64` (Apple Silicon), or
 `macos-x64` (Intel). Extract it and open the app inside. Keep the complete app
 or executable folder together. Python and the runtime dependencies are bundled.
 
-For development builds, open **Actions → Desktop builds**, choose a successful
+For development builds, open **Actions → Builds**, choose a successful
 run, and download its platform artifact. Extract the artifact ZIP, then the
 app archive inside it.
 
@@ -30,8 +30,10 @@ for CI triggers, packaging and the first-launch requirements.
 
 The [iPhone/iPad app](docs/IOS_APP.md) shares the Python engine, menus and
 renderers with desktop, using native iOS drawing, audio and Files access.
-Its **iOS builds** artifact is an unsigned IPA for users to sign and install;
-the Xcode project also supports running directly on your device.
+Download `exp-runtime-<tag>-ios-arm64-unsigned.ipa` and its checksum from the
+release files, then sign and install the IPA. Development runs provide the same
+format in the `ios-arm64-unsigned` Actions artifact. The Xcode project also
+supports running directly on your device.
 
 ## Build your own app
 

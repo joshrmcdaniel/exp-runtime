@@ -33,9 +33,7 @@ class CharacterPickerRenderer:
     def draw(self, target, session):
         picker, engine = session.engine.character_picker, session.engine
         self.canvas.fill((0, 0, 0))
-        background = self.art.image(engine.panel.background_id)
-        if background is not None:
-            self.canvas.blit(background, background.get_rect(center=(160, 180)))
+        self.art.draw_background(self.canvas, engine)
         theme = engine.numbers.get(engine.number_key(picker.characters[0], 651), 0)
         # FUN_000d2238/FUN_000d2558 override layout 47's root to this rectangle.
         self.art.box(self.canvas, Rect(0, 120, 320, 240), theme)

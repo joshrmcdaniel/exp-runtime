@@ -46,7 +46,7 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 | 8 (`08`) | a1 title ref, T(2), a3, a4 | Episode/week title card, UI type 16; negative a1 means empty title, a3 is the background asset, a4 a retained flag. Original fonts, layout, entrance and input gate; Android promotional branches remain unmodeled. See [TITLE_SCREENS.md](TITLE_SCREENS.md). | 0 on acknowledgement | P |
 | 9 (`09`) | a1 poll ID, a2 upload type; remaining words opaque | `0009f0cc` builds then discards the poll parameters, returns `EMPTY`; sender `0007b448` is empty in Android 1.0.9. The runtime implements owner-requested offline completion for type 2 with a verified script continuation. [Contract](STORY_SERVICES.md#offline-surveys-service-9). | native waits; offline R=0 | P (offline) |
 | 10 (`0a`) | a1, bool(a2) | Schedules script resource a1 and its flag through `FUN_0007b44c`; LIFO consumption after HALT. | 0 | C |
-| 11 (`0b`) | a1, a2 | Sets panel background base a2, variant a1 through `FUN_000a92f4`. | 0 | C (static background) |
+| 11 (`0b`) | a1, a2 | Sets panel background base a2, variant a1 through `FUN_000a92f4`, then requests speaker-side alignment. | 0 | C (background and pan) |
 | 12 (`0c`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
 | 13 (`0d`) | optional negative mode, text, character, optional override | Dialogue path; raw text reference is subsequently substituted by the panel. Section 4 describes argument positions. | pending | P |
 | 14 (`0e`) | none required by case; supplied words ignored | Explicit native default path, verified in Android and SHS iOS; ordinary completion removes the supplied frame without changing panel/game state. | 0 | C |
@@ -69,8 +69,8 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 | 31 (`1f`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
 | 32 (`20`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
 | 33 (`21`) | t(1) title, t(2) body, a3 retained | Raw-text message panel, UI type 2. Requires 1000 ms active reading time, then acknowledgement; a3 does not set the initial delay. See [STORY_SERVICES.md](STORY_SERVICES.md#message-panel-service-33). | 0 on acknowledgement | P |
-| 34 (`22`) | a1, a2 | If panel type 3 is absent, creates it and sets background `(a2,a1)`; otherwise default completion. | 0 | C (static background; lifecycle partial) |
-| 35 (`23`) | a1..a4 | If panel 3 exists, character/expression update `(a1,a4)` via `FUN_000ab048`, then background `(a3,a2)`. | 0 | C (static panel; side effects partial) |
+| 34 (`22`) | a1, a2 | If panel type 3 is absent, creates it and sets background `(a2,a1)`; otherwise default completion. | 0 | C (background/pan; lifecycle partial) |
+| 35 (`23`) | a1..a4 | If panel 3 exists, character/expression update `(a1,a4)` via `FUN_000ab048`, then background `(a3,a2)`. | 0 | C (background/pan; other side effects partial) |
 | 36 (`24`) | t(1) | Sets a panel text field through `FUN_000aa028`. | 0 | X |
 | 37 (`25`) | t(1) | Sets dialogue text through `FUN_000a9f84`, starts display, and waits. | pending | X |
 | 38 (`26`) | a1, a2 | Panel operation `FUN_000a927c(panel3,a1,a2,0,-1,-1,-1,-1)`; semantics partial. | 0 | X |
@@ -121,7 +121,7 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 | 83 (`53`) | none read here | Audio helper `FUN_000a3208`; detailed effect unresolved. | 0 | X |
 | 84 (`54`) | none read here | Audio helper `FUN_000a31bc`; detailed effect unresolved. | 0 | X |
 | 85 (`55`) | none read here | Scene helper `FUN_0007b494`; effect unresolved. | 0 | X |
-| 86 (`56`) | a1, a2, a3 flag | If a3==0, invokes `FUN_0007b488`, then background helper `FUN_000a92f4(panel,a1,a2)`. | 0 | C (static background; flag effect unresolved) |
+| 86 (`56`) | a1, a2, a3 flag | If a3==0, invokes `FUN_0007b488`, then background helper `FUN_000a92f4(panel,a1,a2)`. | 0 | C (background/pan; flag effect unresolved) |
 | 87 (`57`) | none read here | Reads scene field `+0x264` and narrows to a word; meaning unresolved. | word | X |
 | 88 (`58`) | T(1) | Queues substituted notification in panel-3 `+0xf0`; next dialogue consumes it. Original notice font, portrait-relative letter motion, length-based fade and tap dismissal; see [notification contract](STORY_SERVICES.md#dialogue-notifications-service-88). | 0 | C |
 | 89 (`59`) | none | Sets a one-shot flag for the next dialogue: box rotation and adjusted reveal delay. `FUN_0007c9e8`. | 0 | C |
@@ -132,7 +132,7 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 | 94 (`5e`) | 22 words; six weighted play tables and six instruction references | Football: nine changing targets, drives, halves and sudden death. [Frame and rules](MINIGAMES.md#4-service-94-football); [presentation](FOOTBALL_UI.md). | home minus away; saves both scores | P |
 | 95 (`5f`) | a1 selector | Last football home score if a1==1, otherwise away score; scene `+0x1c0c/+0x1c10`. Python rejects uninitialized score reads. | word | C |
 | 96 (`60`) | 20 words; ten-word problems, seventeen-word tutorials, two-word symbols | Word/picture grids, timers, tutorial branches, path scoring. [Frame and rules](MINIGAMES.md#5-service-96-word-and-picture-grids). | score >= target as 0/1; UI cells unchanged | P |
-| 97 (`61`) | bool(a1), a2 | Scene helper `FUN_0007b8d4`; effect unresolved. | 0 | X |
+| 97 (`61`) | bool(a1), a2; extra words ignored | `FUN_0007b8d4` stores automatic/fixed background-pan policy and immediately requests alignment a2 (1=left, 2=center, 3=right; other values hold position). [Contract](UI_FIDELITY.md#background-panning). | 0 | C |
 | 98 (`62`) | none read here | `FUN_000843c8` clears the application loading overlay, resets its timer and restores input. The service itself is not yet dispatched. | 0 | X |
 | 99 (`63`) | bool(a1) | `FUN_00082adc` is exactly `mov r0,#0; bx lr` in this release; ordinary completion, no host +0x118 flag. | 0 | C |
 | 100 (`64`) | t(1), bool(a2) | Optionally sets scene `+0x1b`, invokes application helper, then passes text to `FUN_000db5e0`; effect unresolved. | 0 | X |
@@ -274,7 +274,7 @@ menu resume. An authored WAV checks that the real mixer holds its position
 while paused and continues without reloading. Optional player-content tests
 decode and start all eleven cues with the desktop mixer.
 
-`FUN_000a92f4(panel, base, variant)` leaves the background unchanged for base -2, hides it for -1, and otherwise uses base+variant for variants 1/2 when that asset exists, falling back to base. Services 11/34 pass `(a2,a1)`, 35 passes `(a3,a2)`, and 86 passes `(a1,a2)`. The frontend retains the static background; native panel existence checks, transitions, and flag-dependent side effects are only partially modeled.
+`FUN_000a92f4(panel, base, variant)` leaves the background node unchanged for base -2, hides it for -1, and otherwise uses base+variant for variants 1/2 when that asset exists, falling back to base. Services 11/34 pass `(a2,a1)`, 35 passes `(a3,a2)`, and 86 passes `(a1,a2)`. A replacement node starts centered; the helper then requests speaker-side alignment, as does dialogue presentation. Service 97 supplies automatic/fixed policy. The shared renderer implements the 250 ms move and saves its clock; see [background panning](UI_FIDELITY.md#background-panning). Native panel existence checks, transitions, and flag-dependent side effects are only partially modeled.
 
 ## 4. Presentation and remaining structured arguments
 

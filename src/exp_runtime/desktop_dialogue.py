@@ -21,6 +21,11 @@ class DialogueRenderer:
         self.cached_page = None
         self.name_layer = pygame.Surface((320, 480), pygame.SRCALPHA).convert_alpha()
 
+    def draw_background(self, target, engine):
+        background = self.image(engine.panel.background_id)
+        if background is not None:
+            target.blit(background, engine.background_pan.origin(*background.get_size()))
+
     @lru_cache(maxsize=8)
     def pack(self, asset_id):
         return ImagePack.parse(read_ui(self.resources, asset_id))
@@ -212,11 +217,7 @@ class DialogueRenderer:
         if page is None:
             raise ContentError('Dialogue requires the imported APK layout and fonts')
         self.canvas.fill((0, 0, 0))
-        background = self.image(session.engine.panel.background_id)
-        if background is not None:
-            # FUN_000a92f4: unscaled image centered at GL (160,300).
-            self.canvas.blit(background, (160 - background.get_width() // 2,
-                                          180 - background.get_height() // 2))
+        self.draw_background(self.canvas, session.engine)
         motion = session.engine.dialogue_animation
         angle = motion.box_rotation
         if angle:

@@ -1,10 +1,7 @@
 name: iOS builds
 
 on:
-  push:
-    branches: ['**']
-    tags: ['v*']
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -66,14 +63,21 @@ jobs:
       - name: Audit and package unsigned IPA
         run: uv run --locked --extra desktop python tools/package_ios.py --label "$EXP_BUILD_LABEL"
 
-      - name: Upload unsigned IPA, checksum and simulator verification
+      - name: Upload unsigned IPA and checksum
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-arm64-unsigned
           path: |
             dist/downloads/*-ios-arm64-unsigned.ipa
             dist/downloads/*-ios-arm64-unsigned.ipa.sha256
-            build/ios/verification-simulator.json
           if-no-files-found: error
           compression-level: 0
+          retention-days: 30
+
+      - name: Upload simulator verification report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-simulator-verification
+          path: build/ios/verification-simulator.json
+          if-no-files-found: error
           retention-days: 30

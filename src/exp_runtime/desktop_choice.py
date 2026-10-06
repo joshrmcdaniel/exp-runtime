@@ -100,10 +100,13 @@ class ChoiceRenderer:
         self.viewport.height = page.timer_panel.y if page.timer_panel else 421
         self.canvas.set_clip(None)
         self.canvas.fill((0, 0, 0))
-        background = self.art.image(session.engine.panel.background_id)
-        if background is not None:
-            self.canvas.blit(background, (160 - background.get_width() // 2,
-                                          (240 if session.engine.word_game else 180) - background.get_height() // 2))
+        if session.engine.word_game:
+            # The word game's separate background is centered at GL (160,240).
+            background = self.art.image(session.engine.panel.background_id)
+            if background is not None:
+                self.canvas.blit(background, background.get_rect(center=(160, 240)))
+        else:
+            self.art.draw_background(self.canvas, session.engine)
         self.canvas.set_clip(self.viewport)
         box = page.box
         body_height = box.height - page.timer_panel.height + 10 if page.timer_panel else box.height

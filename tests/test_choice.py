@@ -99,6 +99,7 @@ class ChoiceTimerRenderTests(unittest.TestCase):
     def renderer(self):
         import pygame
         from exp_runtime.desktop_choice import ChoiceRenderer
+        from exp_runtime.desktop_dialogue import DialogueRenderer
         layout = authored_layout()
         def frame(asset, index):
             surface = pygame.Surface((20, 20), pygame.SRCALPHA)
@@ -106,8 +107,9 @@ class ChoiceTimerRenderTests(unittest.TestCase):
             if asset not in (708, 709) and index == 10:
                 self.fail('Ordinary choices must hide the score capsule')
             return surface
-        art = SimpleNamespace(frame=frame, image=lambda _: None,
-                              box=lambda *args, **kwargs: None)
+        art = DialogueRenderer.__new__(DialogueRenderer)
+        art.frame, art.image = frame, lambda _: None
+        art.box = lambda *args, **kwargs: None
         text = SimpleNamespace(layout=lambda name, value, width, style:
                                layout_text(layout.font(name), value, width, style),
                                draw_layout=lambda *args: None)

@@ -530,9 +530,64 @@ output is preserved privately in `native-dialogue-placement.c`.
 `FUN_00179a6c` gives each font node an anchor of `(0.5,0.5)`.
 The desktop draws glyph ink relative to the derived origin, including negative
 ink overhang, without normalizing it into a different rectangle.
-Backgrounds use the native unscaled image centered at GL `(160,300)` for the
-ordinary static branch. Background panning, the special resource-1013 width
-adjustment and transitions still need reproduction.
+### Background panning
+
+Backgrounds start at the native unscaled center, GL `(160,300)` or downward
+`(160,180)`. Shared desktop/iOS presentation now implements the recovered
+speaker-side pan for both games. The special resource-1013 width adjustment
+and scene transitions still need reproduction.
+
+Direct Ghidra inspection confirms the horizontal movement during SHS dialogue.
+Android `000aaa40` calls `000a7dcc` during
+dialogue presentation; mode 1 requests alignment 1 (player side), while mode 2
+requests alignment 3 (other character). `0007b790` moves the background node
+over **250 ms** using the action created by `00157b04`; update `00136364`
+interpolates linearly from the starting position. Its center targets are
+`(width/2,300)` for alignment 1, `(160,300)` for alignment 2, and
+`(320-width/2,300)` for alignment 3. These expose the left edge, center or right
+edge of a wide background in the 320-pixel viewport. Repeated dialogue on the
+same side need not move it; a viewport-width image has identical horizontal
+targets. This is speaker-side alignment, not a continuous horizontal loop.
+
+The supplied SHS iOS binary confirms the same targets at downward Y=180 in
+`GameModel::alignLocation` (`00023a9c`), called by
+`SHSUIDialog::animateLocationLayer` (`0007cc18`) for modes 1/2. Both binaries
+also support disabling automatic alignment and selecting a fixed alignment:
+Android `0007b8d4`, iOS `GameModel::setLocationPan` (`00023a80`). Service 97
+passes `bool(a1), a2`, stores automatic/fixed policy, and immediately requests
+alignment `a2`. With automatic panning disabled, subsequent dialogue uses the
+stored alignment. Values outside 1/2/3 hold the current position. Additional
+frame words are ignored; the call returns zero without a UI callback or score,
+result-cell or random mutation. Android dispatch `000a257c` and CoD dispatch
+`00034abc` confirm the contract. Exact iOS animation transaction timing remains
+unverified; shared presentation uses the selected Android 250 ms reference.
+
+CoD independently confirms the same dialogue mode/alignment mapping and center
+targets in `animateLocationLayer` (`0003671c`) and `alignLocation` (`0000eff8`),
+with automatic/fixed control in `setLocationPan` (`0000f0c0`). [CoD evidence](COD.md)
+records the read-only disassembly
+check needed where Ghidra truncates the helper at an Objective-C call.
+
+`engine.background_pan` retains the starting/target fractions of image overflow,
+the 0–250 ms clock and the script policy. It advances only during active session
+time; rendering does not change it. Dialogue uses the existing 250 ms entrance
+delay without adding another delay. Narration, named/no-art dialogue and page
+turns do not request another alignment. Ordinary choices, name entry, portrait
+selection and loading retain the scene background's position; the message and
+word-game panels keep their separate centered backgrounds.
+
+`000a92f4` replaces a nonnegative background at center even when its resource ID
+is unchanged, then requests the current speaker's alignment. Base -2 retains
+the node; -1 hides it. A changed target starts from the current interpolated
+position. Closing dialogue retires its visual state but keeps script policy;
+episode reset re-enables automatic panning (`0007e59c`, CoD `00012128`).
+
+Save version 19 preserves a pan in progress. Older versions load with their
+previous centered view until the next alignment request. Retained service-97
+stops resume their original call. Authored tests cover both games, interrupted
+movement, fixed/automatic policy, replacement/retention, pause, migration and
+matching desktop/native pixels. The iOS probe also checks saved pan clocks and
+CoreGraphics crops at the start, middle and end of opposite pans.
 
 ### Narration and page turns
 
@@ -595,8 +650,8 @@ Ordinary timing examples, relative to the new dialogue's presentation:
 
 The box itself is positioned/sized immediately by `FUN_000aa0a0`; the ordinary
 path does not supply a box fade or scale action. The visible entrance motion
-comes from its portrait, name and progressive text. The renderer keeps the
-background, box and footer stationary during these component transitions.
+comes from its portrait, name and progressive text. The box and footer remain
+stationary while the background follows its independent 250 ms alignment move.
 
 **Letter cadence policy.** The native selector's 3 ms interval is not a promise
 of 333 letters/second: its body visits only one source index per update and

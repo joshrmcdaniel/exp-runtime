@@ -137,9 +137,7 @@ class InputRenderer:
 
     def draw(self, target, session, *, error=None, cursor_visible=True):
         self.canvas.fill((0, 0, 0))
-        background = self.art.image(session.engine.panel.background_id)
-        if background is not None:
-            self.canvas.blit(background, background.get_rect(center=(160, 180)))
+        self.art.draw_background(self.canvas, session.engine)
         if error:
             buttons = self.alert()
         elif getattr(self.resources.library, 'kind', 'apk') == 'ipa':

@@ -119,6 +119,18 @@ def verify(directory):
             assert stopped.vm.snapshot() == expired.vm.snapshot()
             assert stopped.pending.request.args == (1,)
             checks.append(f'{game}: compressed EXP, VM choice/timer, atomic save/load, retained unknown call')
+            moving = Session(resources)
+            moving.advance()
+            moving.engine.background_pan.configure(False, 1)
+            moving.tick(100)
+            assert moving.engine.background_pan.origin(640, 360) == (-96, 0)
+            resumed = Session.from_snapshot(resources, json.loads(json.dumps(moving.snapshot())))
+            assert resumed.snapshot() == moving.snapshot()
+            resumed.tick(150)
+            assert resumed.engine.background_pan.origin(640, 360) == (0, 0)
+            assert resumed.remaining_ms == 750
+            assert resumed.vm.snapshot() == moving.vm.snapshot()
+            checks.append(f'{game}: background pan, saved alignment and active clock')
         # Also exercise the same public archive inspector used by the CLI.
         assert trace_archive(source)['status'] == 'choice'
         checks.append('Public EXP trace through the production engine')
@@ -149,7 +161,7 @@ def drawing_fixture():
     """Asymmetric authored pixels catch flipped images, crop and alpha errors."""
     from PIL import Image
     from exp_runtime.platforms.drawing import Draw, FrameEncoder, Surface, Transform, raster, SRCALPHA
-    target = Surface((64, 32))
+    target = Surface((320, 112))
     target.fill((10, 20, 30))
     tile = Surface.from_pixels(Image.new('RGBA', (4, 6), (240, 10, 20, 255)))
     tile.fill((10, 230, 20), (0, 0, 4, 2))
@@ -172,11 +184,31 @@ def drawing_fixture():
     target.set_clip((36, 4, 25, 25))
     draw_quad(target, solid, ((34, 5), (59, 1), (62, 28), (36, 24)))
     target.set_clip(None)
-    expected = raster(target.snapshot())
     points = [(0, 0), (2, 3), (2, 8), (8, 3), (8, 8), (14, 3), (18, 3),
               (2, 12), (3, 23), (15, 15), (16, 16), (23, 23), (24, 24), (27, 27),
               (24, 10), (27, 11), (25, 15), (23, 15), (31, 15),
               (35, 6), (40, 6), (41, 20), (57, 24), (61, 24)]
+    # Render the real shared background helper at the start, midpoint and end
+    # of opposite pans. Swift checks these cropped pixels with CoreGraphics.
+    from exp_runtime.desktop_dialogue import DialogueRenderer
+    from exp_runtime.engine import EngineState
+    art = DialogueRenderer.__new__(DialogueRenderer)
+    background = Surface((640, 360))
+    for column in range(8):
+        background.fill((column * 30, 255 - column * 30, column * 10), (column * 80, 0, 80, 360))
+    art.image = lambda _: background
+    engine = EngineState()
+    engine.background_pan.align(1)
+    for row, ms in enumerate((0, 125, 125, 125, 125)):
+        if row == 3:
+            engine.background_pan.align(3)
+        engine.background_pan.tick(ms)
+        scene = Surface((320, 480))
+        art.draw_background(scene, engine)
+        y = 38 + row * 14
+        target.blit(scene, (0, y), (0, 150, 320, 12))
+        points.extend((x, y + 5) for x in (0, 79, 80, 159, 160, 239, 240, 319))
+    expected = raster(target.snapshot())
     return dict(frame=FrameEncoder().encode(target), samples=[dict(at=p, rgba=expected.getpixel(p)) for p in points])
 
 

@@ -22,6 +22,7 @@ from .speaker_names import SpeakerNames
 from .title_screen import TitleScreen
 from .relationships import RelationshipChange
 from .dialogue_animation import DialogueAnimation
+from .background import BackgroundPan
 from .dialogue_notice import notice_lifetime
 from .vm import KiwiVM, StopKind, VMError, VMStop, signed16
 
@@ -63,6 +64,7 @@ class EngineState:
     character_art_variants: dict[int, list[int]] = field(default_factory=dict)
     character_expressions: dict[int, int] = field(default_factory=dict)
     panel: PanelState = field(default_factory=PanelState)
+    background_pan: BackgroundPan = field(default_factory=BackgroundPan)
     music_id: int = -1
     music_flag: bool = False
     sound_id: int = -1
@@ -101,6 +103,8 @@ class EngineState:
             if 0 <= character < 200:
                 del self.character_expressions[character]
         self.panel = PanelState()
+        self.background_pan.center()
+        self.background_pan.automatic = True  # 0007e59c resets automatic panning.
         self.dialogue_animation = self.scene_badge = None
         self.word_game = self.word_grid = self.football = None
         self.character_picker = self.loading = self.message_panel = self.title_screen = None
@@ -148,6 +152,7 @@ class EngineState:
         self.panel.character_id, self.panel.expression = visible, expression
         self.panel.text, self.panel.mode = text, mode
         self.panel.presentation_mode, self.panel.theme = presentation, theme
+        self.background_pan.dialogue(presentation)
         if self.next_dialogue_notice:
             self.notice, self.next_dialogue_notice = self.next_dialogue_notice, ''
             self.notice_ms = notice_lifetime(self.notice)
@@ -377,6 +382,7 @@ class EngineState:
             # FUN_000a7cd0 marks panel 3 for removal; no arguments are read
             # and no UI callback is requested. Retire its presentation state.
             self.panel = PanelState()
+            self.background_pan.center()
             self.dialogue_animation = None
             self.next_dialogue_notice, self.notice, self.notice_ms = '', '', 0
             return complete('close_dialogue_panel')
@@ -386,9 +392,20 @@ class EngineState:
             if base != -2:
                 candidate = base + variant if base >= 0 and variant in (1, 2) else base
                 self.panel.background_id = candidate if not resource_exists or resource_exists(candidate) else base
+                if base >= 0:
+                    # 000a92f4 replaces the node even when its ID is unchanged.
+                    self.background_pan.center()
             if y == 35:
                 self.panel.character_id, self.panel.expression = args[0], max(0, args[3])
+                self.panel.presentation_mode, _, _ = self.dialogue_presentation(
+                    self.panel.character_id, self.panel.expression)
+            self.background_pan.dialogue(self.panel.presentation_mode)
             return complete('set_background', asset_id=self.panel.background_id)
+        if y == 97:
+            at_least(2)
+            self.background_pan.configure(args[0] != 0, args[1])
+            return complete('set_background_pan', automatic=self.background_pan.automatic,
+                            alignment=self.background_pan.alignment)
         if y == 16:
             need(1)
             self.scene_value = args[0]

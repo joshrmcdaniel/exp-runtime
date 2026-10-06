@@ -397,7 +397,7 @@ final class RuntimeController: UIViewController, UIDocumentPickerDelegate {
 
     private func verifyPresentation(_ core: [String: Any]) {
         verificationReport = core
-        verificationChecks = (core["checks"] as? [String] ?? []) + ["Native CoreGraphics pixels: orientation, clipping, scale, rotation, alpha"]
+        verificationChecks = (core["checks"] as? [String] ?? []) + ["Native CoreGraphics pixels: orientation, clipping, scale, rotation, alpha, background panning"]
         requests.append(["operation": "verify_start"])
     }
 }

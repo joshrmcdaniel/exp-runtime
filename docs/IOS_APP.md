@@ -1,6 +1,6 @@
 # iOS app
 
-Introduced in **v0.4.0 (unreleased)**. The v0.3.0 release supports importing
+Introduced in **v0.4.0**. The v0.3.0 release supports importing
 original IPA assets on desktop; it does not include this iPhone/iPad app.
 
 The iPhone/iPad app embeds the same `exp_runtime` Python package used on
@@ -35,12 +35,20 @@ own signing and installation method, which must sign the app and all embedded
 frameworks. Producing the unsigned artifact needs no signing credentials or
 provisioning profile.
 
-The [iOS workflow](../.github/workflows/ios-builds.yml) builds on an arm64
-macOS runner, runs the host tests, builds and verifies the simulator app, and
-packages an unsigned device build. It uploads the IPA, checksum and simulator
-verification report as the `ios-arm64-unsigned` artifact. It does not publish
-a GitHub release or handle user signing. The owner must push the workflow
-before its first remote run can be verified.
+The [Builds workflow](../.github/workflows/desktop-builds.yml) calls the reusable
+[iOS workflow](../.github/workflows/ios-builds.yml) alongside the desktop builds.
+The iOS job runs host tests, builds and verifies the simulator app, and packages
+an unsigned device build on an arm64 macOS runner. Its `ios-arm64-unsigned`
+artifact contains only the IPA and checksum; `ios-simulator-verification`
+contains the verification report. The standalone **iOS builds** workflow can
+also be run manually for development artifacts.
+
+For version tags, the release job waits for all desktop builds and iOS
+verification, checks all five downloads and their checksums, and attaches the
+IPA and checksum directly to the GitHub Release alongside desktop downloads.
+Simulator reports remain Actions artifacts. Users handle signing and installation.
+For a release made before this workflow change, see
+[adding the missing IPA](DISTRIBUTION.md#adding-an-ipa-to-an-existing-release).
 
 ## Install from Xcode
 

@@ -130,7 +130,7 @@ class SharedDialogueTests(unittest.TestCase):
                 self.assertNotEqual(restored.pending.details['page_end'], old['pending']['details']['page_end'])
                 self.assertTrue(restored.engine.speaker_names.fonts)
                 current = restored.snapshot()
-                self.assertEqual(current['version'], 18)
+                self.assertEqual(current['version'], 19)
                 self.assertEqual(Session.from_snapshot(session.resources, current).snapshot(), current)
                 current['pending']['details']['page_end'] -= 1
                 with self.assertRaisesRegex(SaveError, 'page does not match'):
@@ -148,10 +148,14 @@ class SharedDialogueTests(unittest.TestCase):
         self.assertEqual(restored.vm.snapshot(), session.vm.snapshot())
 
     def test_v15_ipa_reflows_with_native_font_metrics_but_preserves_and_validates_history(self):
+        from exp_runtime.background import BackgroundPan
         for game in ('shs', 'cod'):
             session = self.session(game)
+            # v15 displayed a centered background and had no pan history.
+            session.engine.background_pan = BackgroundPan()
             old = session.snapshot()
             old['version'] = 15
+            del old['engine']['background_pan']
             before = deepcopy(old)
             # The old checkpoint used the bitmap-style layout; the same
             # resources now expose outline metrics without changing VM data.
@@ -163,7 +167,7 @@ class SharedDialogueTests(unittest.TestCase):
             self.assertEqual(restored.pending.details['page_start'], old['pending']['details']['page_start'])
             self.assertNotEqual(restored.pending.details['page_end'], old['pending']['details']['page_end'])
             current = restored.snapshot()
-            self.assertEqual(current['version'], 18)
+            self.assertEqual(current['version'], 19)
             self.assertEqual(Session.from_snapshot(session.resources, current).snapshot(), current)
             bad = deepcopy(old)
             bad['engine']['speaker_names']['fonts']['PajamaHip26']['lines'] += 1

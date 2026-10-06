@@ -37,9 +37,7 @@ class LoadingRenderer:
 
     def draw(self, target, session):
         self.canvas.fill((0, 0, 0))
-        background = self.art.image(session.engine.panel.background_id)
-        if background is not None:
-            self.canvas.blit(background, background.get_rect(center=(160, 180)))
+        self.art.draw_background(self.canvas, session.engine)
         self.canvas.blit(self.panel(), (0, 0))
         icon = self.art.frame(126, session.engine.loading.frame)
         self.canvas.blit(icon, icon.get_rect(center=(155, 317)))

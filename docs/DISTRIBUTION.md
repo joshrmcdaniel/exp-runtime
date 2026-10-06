@@ -10,11 +10,14 @@ System-font fallback and current limits are in [IPA.md](IPA.md) and [COD.md](COD
 
 ## Downloads built by GitHub Actions
 
-[Desktop builds](../.github/workflows/desktop-builds.yml) runs on branch pushes,
+[Builds](../.github/workflows/desktop-builds.yml) runs on branch pushes,
 pull requests, version tags beginning with `v`, and manual **Run workflow**
 requests. It installs locked dependencies with uv and Python 3.14, runs the
 tests without game content, builds the app, audits its bundle and tests the
-extracted download. Third-party actions are pinned to verified commit hashes.
+extracted desktop download. It also calls the reusable
+[iOS workflow](../.github/workflows/ios-builds.yml), which verifies the shared
+engine and native presentation in a simulator before packaging the unsigned
+device app. Third-party actions are pinned to verified commit hashes.
 
 | Download target | GitHub runner | Archive |
 | --- | --- | --- |
@@ -22,16 +25,21 @@ extracted download. Third-party actions are pinned to verified commit hashes.
 | `linux-x64` | `ubuntu-22.04` | tar.gz preserving executable modes and links |
 | `macos-arm64` | `macos-14` | ZIP containing the Apple Silicon app |
 | `macos-x64` | `macos-15-intel` | ZIP containing the Intel app |
+| `ios-arm64-unsigned` | `macos-26` | Unsigned IPA for users to sign and install |
 
-After a successful run, development downloads are under **Actions → Desktop
-builds → the run → Artifacts**, with one artifact per platform. Each contains
+After a successful run, development downloads are under **Actions → Builds
+→ the run → Artifacts**, with one artifact per platform. Each contains
 an app archive and its `.sha256` checksum; extract the outer artifact ZIP and
-then the app archive. These artifacts expire after 30 days. GitHub requires
+then the app archive (or sign the IPA). The simulator report is a separate
+`ios-simulator-verification` artifact and is not a release download.
+These artifacts expire after 30 days. GitHub requires
 sign-in and repository read access for [Actions artifact downloads](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
 
 The owner can publish a version by pushing a tag such as `v0.1.0`. Once all
-four builds pass, the release job verifies the downloaded checksums and
-publishes their archives/checksums on **Releases**. A tag containing a hyphen,
+four desktop builds and the iOS build/verification pass, the release job
+requires all five downloads and their checksum files, verifies the checksums,
+and publishes the desktop archives plus the unsigned IPA and their checksums
+on **Releases**. A tag containing a hyphen,
 such as `v0.1.0-rc.1`, creates a prerelease. Ordinary pushes and pull requests
 never create releases. Their jobs have read-only repository permissions; only
 the version-tag release job has `contents: write`, using GitHub's built-in
@@ -41,7 +49,7 @@ The release body comes from [RELEASE.md](../RELEASE.md) at the repository root.
 Update it before tagging a version. [CHANGELOG.md](../CHANGELOG.md) records
 release history, with upcoming changes under **Unreleased**.
 
-The current release notes target **v0.4.0 (unreleased)** and contain changes
+The current release notes describe **v0.4.0** and contain changes
 after the v0.3.0 tag. The iOS app/unsigned IPA artifacts, ZIP/RAR episode
 imports and subsequent shared UI/hint improvements belong to v0.4.0.
 Earlier SHS/CoD IPA asset import remains in its original release history.
@@ -52,9 +60,20 @@ an interrupted upload. If GitHub release immutability is enabled, publish a
 new version tag instead. The workflow does not commit,
 push code or create a tag; the release command requires the tag to exist.
 
-Until the owner pushes this workflow, there are no CI-produced downloads.
-Cross-platform success must be confirmed by its first GitHub run. Local
-macOS validation alone does not establish Windows/Linux compatibility.
+Workflow changes take effect for tags containing the updated files. Local
+validation does not replace a successful GitHub run on all five targets.
+
+### Adding an IPA to an existing release
+
+For a tag released before iOS was connected to the release job, download its
+successful **iOS builds → ios-arm64-unsigned** artifact. Extract the outer
+artifact ZIP and find the `.ipa` and `.ipa.sha256` files; older artifacts put
+them under `dist/downloads/`. Use the run for that tag/commit so the files match
+the published version. In **Releases → Edit**, attach both files and save.
+
+Rerunning the old tag's workflow uses its original commit and workflow files;
+it does not load this fix from the default branch. See
+[GitHub's rerun behavior](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs).
 
 ## Player workflow
 

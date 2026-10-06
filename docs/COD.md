@@ -123,6 +123,21 @@ games; [UI fidelity](UI_FIDELITY.md#dialogue-continue-tab) records the common
 geometry, font and save behavior. Read-only LLVM Thumb disassembly of the
 supplied armv6 slice supplements Ghidra where its ARM decoding is incorrect.
 
+CoD also has SHS's speaker-side background alignment, now implemented in
+the shared desktop/iOS renderer. `SHSUIDialog::animateLocationLayer` (`0003671c`) selects
+alignment 1 for dialogue mode 1 and alignment 3 for mode 2.
+`GameModel::alignLocation` (`0000eff8`) sets the background center to
+`(width/2,180)`, `(160,180)` or `(320-width/2,180)` for alignment 1/2/3.
+`setLocationPan` (`0000f0c0`) controls automatic versus fixed alignment through
+fields `+0x3f8/+0x3fc`. Ghidra incorrectly stops the dialogue helper at its first
+Objective-C call; its memory bytes and the original armv6 disassembly confirm
+the continued mode branches/calls at `00036742`–`0003675e` and the 0.25-second
+return value. Service 97 calls `setLocationPan` at `00034abc`, with the same
+automatic flag and alignment arguments as SHS. Exact iOS animation transaction
+timing remains unverified; the shared renderer uses Android's verified linear
+250 ms move. See [UI fidelity](UI_FIDELITY.md#background-panning) for timing,
+background replacement, fixed alignment and save migration.
+
 Dialogue uses the [shared SHS skin and renderer](IPA.md#dialogue-text-placement),
 with both games' outline fonts following the same recovered CSFont rules.
 Read-only Ghidra verification confirms wrapped-height selection of normal/tall
@@ -183,6 +198,10 @@ The CoD dispatcher is `SHSScript::syscall` at `0003354c`.
   tracing or an IPA without that field leaves this query explicitly pending.
 - **94/96:** native default completions, returning zero and removing the
   supplied frame without starting a minigame or modifying scores/randomness.
+- **97:** shared location-pan control: `bool(a1)` enables automatic alignment;
+  `a2` chooses left (1), center (2) or right (3). It also requests that alignment
+  immediately, ignores extra words and completes with zero. Other alignments
+  retain the current position. The policy and active movement are saved.
 - **100:** the supplied 1.3.4 runtime takes the same default completion through
   its out-of-range branch, without reading its arguments. The desktop follows
   that verified behavior for the observed promotional-link calls; no external
@@ -191,10 +210,11 @@ The CoD dispatcher is `SHSScript::syscall` at `0003354c`.
   intact. Their native behavior was audited separately below; SHS's survey,
   loading and score handlers must not be enabled wholesale for CoD.
 
-Older saves stopped at 70, 94, 96 or 100 resume their retained call and its actual
+Older saves stopped at 70, 94, 96, 97 or 100 resume their retained call and its actual
 continuation without replaying earlier instructions or random draws. The
 outgoing portrait is recovered from the retained panel for the next dialogue.
-These service handlers do not add saved fields or require library reimport.
+Service 97's presentation state uses save version 19; older saves migrate.
+These handlers do not require library reimport.
 
 The shared KiWi decoder accepted the 420 scripts in the 103 supplied external
 EXPs. Removing byte-identical EXP copies leaves 80 archives and 368 scripts,

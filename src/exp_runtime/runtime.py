@@ -12,6 +12,7 @@ from .content import EpisodeResources, digest
 from .games import GAMES, game_id
 from .engine import EngineAction, EngineState
 from .dialogue_animation import DialogueAnimation, DialoguePortrait
+from .background import BackgroundPan
 from .dialogue_notice import notice_lifetime
 from .relationships import RelationshipAnimation, RelationshipChange
 from .speaker_names import SpeakerNames
@@ -330,6 +331,7 @@ class Session:
             raise ValueError('Elapsed time must be nonnegative milliseconds')
         if self.episode_exited:
             return self.pending
+        self.engine.background_pan.tick(elapsed_ms)
         if self.engine.scene_badge:
             self.engine.scene_badge.tick(elapsed_ms)
         self.engine.notice_ms = max(0, self.engine.notice_ms - elapsed_ms)
@@ -395,7 +397,7 @@ class Session:
         return self.advance()
 
     def snapshot(self) -> dict:
-        return dict(format='exp-runtime-save', version=18,
+        return dict(format='exp-runtime-save', version=19,
                     content=self.resources.identity, scene=self.scene,
                     script_sha256=digest(self.vm.program.to_bytes()),
                     vm=self.vm.snapshot(), engine=asdict(self.engine),
@@ -406,9 +408,14 @@ class Session:
     @classmethod
     def from_snapshot(cls, resources: EpisodeResources, state: dict):
         try:
-            if state['format'] not in ('shs-runtime-save', 'exp-runtime-save') or state['version'] not in range(1, 19):
+            if state['format'] not in ('shs-runtime-save', 'exp-runtime-save') or state['version'] not in range(1, 20):
                 raise SaveError('Unsupported save format or version')
             legacy = state['version'] == 1
+            if state['version'] < 19:
+                state = deepcopy(state)
+                # Preserve the older renderer's centered view until the next
+                # native alignment request; never replay dialogue on load.
+                state['engine']['background_pan'] = asdict(BackgroundPan())
             if state['version'] < 18 and state['engine'].get('word_grid') is not None:
                 state = deepcopy(state)
                 state['engine']['word_grid'].update(pop_ms={}, explosions=[], glint_ms=100_000_000)
@@ -476,6 +483,7 @@ class Session:
             engine = session.engine
             engine.game_key = game_id(resources)
             engine.app_version = getattr(resources.library, 'app_info', {}).get('CFBundleVersion')
+            engine.background_pan.validate()
             engine.speaker_names.validate()
             if engine.title_screen is not None:
                 engine.title_screen.validate()
@@ -608,6 +616,7 @@ class Session:
                     if legacy:
                         details = engine.present_dialogue(details['character_id'], details['expression'],
                                                           details['raw_text'], details['mode'], settled_relationship=True)
+                        engine.background_pan.center()
                     else:
                         for key in ('visible_character_id', 'presentation_mode', 'theme',
                                     'emphasis_theme', 'page_start', 'page_end'):
@@ -737,8 +746,8 @@ class Session:
                     and session.pending.request.yield_id == 91):
                 session.pending = engine.dispatch(session.vm, resource_exists=resources.exists)
                 engine.dialogue_animation = None
-            newly_supported = ((70, 94, 96, 100) if game_id(resources) == 'cod'
-                               else (4, 7, 9, 14, 15, 21, 33, 39, 63, 70, 76))
+            newly_supported = ((70, 94, 96, 97, 100) if game_id(resources) == 'cod'
+                               else (4, 7, 9, 14, 15, 21, 33, 39, 63, 70, 76, 97))
             if (session.pending and session.pending.name == 'unhandled_yield'
                     and session.pending.request.yield_id in newly_supported):
                 # Dispatch only the newly supported call from its validated
@@ -749,7 +758,7 @@ class Session:
                 if session.pending.request.yield_id == 9 and len(session.pending.request.args) < 2:
                     raise SaveError('Survey stop is missing its submission arguments')
                 if (engine.panel.presentation_mode and
-                        (game_id(resources) == 'cod' or session.pending.request.yield_id in (14, 15, 21, 70, 76))):
+                        (game_id(resources) == 'cod' or session.pending.request.yield_id in (14, 15, 21, 70, 76, 97))):
                     # Unsupported stops discarded their animation, but retained
                     # the visible panel. Recover its outgoing portrait identity
                     # for the new dialogue's entrance, without replaying its text.

@@ -346,15 +346,16 @@ while data and PC/SP/FP reset according to the core VM contract.
 <a id="runtime-save-schema-version-14"></a>
 <a id="runtime-save-schema-version-15"></a>
 <a id="runtime-save-schema-version-17"></a>
+<a id="runtime-save-schema-version-18"></a>
 
-## Runtime save schema, version 18
+## Runtime save schema, version 19
 
 This is a new format for the reimplementation. No pickle, object deserialization,
 or original executable code is used. JSON fields are:
 
 | Field | Contract |
 | --- | --- |
-| `format`, `version` | `"exp-runtime-save"`, `18` |
+| `format`, `version` | `"exp-runtime-save"`, `19` |
 | `content` | `profile`, `apk_sha256`, `episode_sha256`; must exactly match loaded content |
 | `scene` | Unsigned current script resource ID |
 | `script_sha256` | Hash of the losslessly encoded current program |
@@ -393,7 +394,17 @@ state and VM frame; absent effects start inactive. Native fragment creation
 now consumes its recovered random draws, so future generated boards may differ
 from older runtime builds after a successful word. Historical omitted draws
 are not reconstructed. See [GRID_UI.md](GRID_UI.md#saved-presentation-and-verification).
-Older runtime builds cannot read version-18 saves.
+
+Version 19 adds `engine.background_pan`: `automatic:bool`, signed-word
+`alignment:int`, `start:float[0..1]`, `target:float[0..1]` and
+`elapsed_ms:int[0..250]`. The fractions represent horizontal image overflow;
+no image pixels or device dimensions are needed to restore the movement.
+The native 250 ms linear pan shares the active session clock and freezes with
+pause/focus loss. Versions 1–18 start with their previous centered view and
+automatic alignment enabled, without replaying dialogue or altering VM state.
+Old SHS/CoD stops at service 97 resume only that retained call and continuation.
+See [background panning](UI_FIDELITY.md#background-panning). Older runtime builds
+cannot read version-19 saves.
 
 The `vm` object contains `pc`, `sp`, `fp`, `a`, `b`, `result`, `data`, `stack`,
 `pending`, `steps_executed`, `opcode_counts`, and `recent_pcs`.
@@ -716,8 +727,9 @@ choices use the supplied screenshot layout and APK artwork. Episode/week title
 screens now use their original glyph fonts, layout and entrance animations.
 Name-entry screens use native APK layouts, bitmap fonts, and error artwork,
 with SDL keyboard input. Dialogue portraits scale in/out and
-names fade while text reveals; dialogue backgrounds remain static, with basic music/SFX
-playback. NPC relationship icons now use original assets, cache writes, sounds,
+names fade while text reveals; backgrounds pan to the native speaker-side
+alignment over 250 ms, with script-controlled fixed alignment and saved motion.
+Basic music/SFX playback is supported. NPC relationship icons use original assets, cache writes, sounds,
 gains/losses and dialogue delays. Name layout includes the native exceptions
 and persistent font inputs, with a documented glyph-bounds correction for
 remaining overlaps. Cross-object kerning, other widgets' shared font effects,

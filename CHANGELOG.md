@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.1
+
+### Fixed
+
+- Restore speaker-side background panning in SHS and CoD on desktop and iOS,
+  using the native 250 ms movement and script-controlled automatic/fixed
+  alignment (service 97). Preserve the current pan through pause and save/load;
+  older saves remain readable without replaying dialogue.
+- Include the unsigned iOS IPA and SHA-256 checksum in tagged GitHub Release
+  downloads. Wait for all desktop builds and iOS verification before publishing;
+  keep simulator reports in separate Actions artifacts.
+
 ## v0.4.0
 
 ### Fixed
