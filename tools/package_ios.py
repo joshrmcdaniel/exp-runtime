@@ -4,9 +4,11 @@ import hashlib
 from pathlib import Path
 import plistlib
 import re
+import shutil
+import stat
 import struct
 import tempfile
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 try:
     from tools.package_desktop import audit_bundle
@@ -45,11 +47,14 @@ def audit_binary(path):
 
 
 def audit_ios(bundle):
+    """Validate the payload and return its executable paths for ZIP permissions."""
     audit_bundle(bundle)
     info = plistlib.loads((bundle / 'Info.plist').read_bytes())
     if info.get('CFBundleSupportedPlatforms') != ['iPhoneOS']:
         raise ValueError('Only an iPhoneOS device build can be packaged as an IPA')
-    audit_binary(bundle / info['CFBundleExecutable'])
+    executable = bundle / info['CFBundleExecutable']
+    audit_binary(executable)
+    executables = {executable}
     frameworks = bundle / 'Frameworks'
     if not (frameworks / 'Python.framework/Python').is_file():
         raise ValueError('The embedded Python framework is missing')
@@ -57,7 +62,9 @@ def audit_ios(bundle):
         if item.suffix != '.framework' or not item.is_dir():
             raise ValueError(f'Unexpected framework content: {item.name}')
         metadata = plistlib.loads((item / 'Info.plist').read_bytes())
-        audit_binary(item / metadata['CFBundleExecutable'])
+        executable = item / metadata['CFBundleExecutable']
+        audit_binary(executable)
+        executables.add(executable)
     for path in bundle.rglob('*'):
         if path.is_symlink() or path.name in ('_CodeSignature', 'embedded.mobileprovision'):
             raise ValueError(f'Unexpected link or signing material: {path.relative_to(bundle)}')
@@ -70,6 +77,7 @@ def audit_ios(bundle):
             target = bundle / relative
             if not target.is_file() or target.with_name(target.name + '.origin').read_text().strip() != path.relative_to(bundle).as_posix():
                 raise ValueError(f'Broken embedded Python framework reference: {path.name}')
+    return executables
 
 
 def package(root, label='local'):
@@ -78,7 +86,7 @@ def package(root, label='local'):
     if re.fullmatch(r'[0-9a-f]{40}', label):
         label = label[:12]
     bundle = root / 'dist/ios/iphoneos/EXP Runtime.app'
-    audit_ios(bundle)
+    executables = audit_ios(bundle)
     output = root / 'dist/downloads'
     output.mkdir(parents=True, exist_ok=True)
     target = output / f'exp-runtime-{label}-ios-arm64-unsigned.ipa'
@@ -87,7 +95,14 @@ def package(root, label='local'):
         with ZipFile(archive, 'w', ZIP_DEFLATED) as stream:
             for path in sorted(bundle.rglob('*')):
                 if path.is_file():
-                    stream.write(path, (Path('Payload') / bundle.name / path.relative_to(bundle)).as_posix())
+                    member = ZipInfo.from_file(path, (Path('Payload') / bundle.name / path.relative_to(bundle)).as_posix())
+                    # The IPA targets iOS even when its inputs were copied through
+                    # a Windows filesystem, which cannot retain Unix mode bits.
+                    member.create_system = 3
+                    member.external_attr = (stat.S_IFREG | (0o755 if path in executables else 0o644)) << 16
+                    member.compress_type = ZIP_DEFLATED
+                    with path.open('rb') as source, stream.open(member, 'w') as destination:
+                        shutil.copyfileobj(source, destination)
         with ZipFile(archive) as stream:
             if stream.testzip() is not None:
                 raise ValueError('The packaged IPA failed its CRC check')

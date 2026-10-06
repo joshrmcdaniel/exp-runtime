@@ -5,6 +5,7 @@ from importlib.metadata import Distribution
 import json
 from pathlib import Path
 import plistlib
+import stat
 import struct
 import tempfile
 import unittest
@@ -72,18 +73,25 @@ class IOSPackagingTests(unittest.TestCase):
         self.info = dict(CFBundleExecutable='EXP Runtime', CFBundleSupportedPlatforms=['iPhoneOS'])
         (self.bundle / 'Info.plist').write_bytes(plistlib.dumps(self.info))
         (self.bundle / 'EXP Runtime').write_bytes(native_binary())
-        (self.bundle / 'EXP Runtime').chmod(0o755)
         (self.framework / 'Info.plist').write_bytes(plistlib.dumps(dict(CFBundleExecutable='Python')))
         (self.framework / 'Python').write_bytes(native_binary())
 
     def test_ipa_contains_only_the_audited_payload_and_matching_checksum(self):
         (self.root / 'private.exp').write_bytes(b'authored excluded fixture')
+        # Windows cannot preserve executable bits; packaging must supply the
+        # target permissions for the app and every embedded framework itself.
+        for file in self.bundle.rglob('*'):
+            if file.is_file():
+                file.chmod(0o644)
         path = package(self.root, 'prototype')
         with ZipFile(path) as archive:
             self.assertIsNone(archive.testzip())
             self.assertTrue(all(n.startswith('Payload/EXP Runtime.app/') for n in archive.namelist()))
             self.assertEqual(len(archive.namelist()), 4)
-            self.assertTrue(archive.getinfo('Payload/EXP Runtime.app/EXP Runtime').external_attr >> 16 & 0o111)
+            for member in archive.infolist():
+                self.assertEqual(member.create_system, 3)
+                expected = 0o644 if member.filename.endswith('Info.plist') else 0o755
+                self.assertEqual(member.external_attr >> 16, stat.S_IFREG | expected)
         self.assertEqual(path.with_suffix('.ipa.sha256').read_text(),
                          f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n')
 

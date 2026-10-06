@@ -144,7 +144,8 @@ button that opens the system browser.
 
 Libraries and saves live under **On My iPhone → EXP Runtime → EXP Runtime**
 in Files. Library locations are relative to this directory so an app-container
-UUID change does not invalidate them. IPA font lookup uses the original bundled
+UUID change does not invalidate them. Serialized iOS paths use forward slashes
+on every host, including Windows tests. IPA font lookup uses the original bundled
 font when present, then the named iOS system face, then the system default.
 Android bitmap fonts retain their existing layout path.
 
@@ -157,14 +158,21 @@ iOS/Python/Pillow versions in `build/ios/verification-simulator.json`.
 `build/ios/verification-window.png` captures the full phone screen, including
 safe areas and letterboxing, for visual inspection.
 
-Simulator boot has a five-minute limit. App startup and self-tests then have
-their own five-minute limit, configurable with `--timeout SECONDS`. The runner
-attaches to the app's console while watching for its final report and prints
-progress during the wait. An early exit, failed report or expired deadline
-still fails verification. Cleanup attempts termination, shutdown and deletion
-without replacing the original failure if another simulator command hangs.
+Simulator boot defaults to a five-minute limit, configurable with
+`--boot-timeout SECONDS`; CI allows ten minutes for a cold boot. The runner
+prints the selected available runtime/device, relays `bootstatus` boot and
+data-migration output, and prints elapsed time every 30 seconds while waiting.
+It must finish booting successfully before the app is installed. App startup
+and self-tests then have their own five-minute limit, configurable with
+`--timeout SECONDS`. The runner attaches to the app's console while watching
+for its final report and prints progress during the wait. An early exit, failed
+report or expired deadline still fails verification. Cleanup attempts termination,
+shutdown and deletion without replacing the original failure if another
+simulator command hangs.
 
-Console output stays under `build/ios/simulator-diagnostics/<device-id>/`.
+Boot and app console output stay in `boot.log` and `launch.log` under
+`build/ios/simulator-diagnostics/<device-id>/`, alongside selected-device
+metadata. The parent directory also retains the installed runtime inventory.
 On failure, the runner also saves available app reports, simulator logs and a
 screenshot before cleanup. The iOS workflow uploads this directory as the
 `ios-simulator-diagnostics` artifact when verification fails. Optional original
@@ -240,6 +248,8 @@ The build copies `src/exp_runtime` directly. Native Python extensions become
 individual frameworks using CPython's `.fwork` loader. Packaging audits every
 binary's arm64 iPhone platform, absence of signatures/provisioning material,
 loader references and the same original-content exclusions as desktop.
+IPA entries use explicit Unix modes: 0755 for the audited app/framework
+executables and 0644 for resources, independently of host filesystem modes.
 
 References: [CPython on iOS](https://docs.python.org/3/using/ios.html),
 [Python Apple Support](https://github.com/beeware/Python-Apple-support),

@@ -6,9 +6,12 @@
 
 - Fix Windows RAR decoder builds failing on unused POSIX regex detection or
   missing linkage to the system BCrypt library.
-- Allow slower iOS simulator startup during CI verification. Preserve console
-  output, reports and simulator diagnostics on failure, and attempt cleanup
-  even when simulator commands time out.
+- Write portable iOS library paths and explicit IPA executable permissions,
+  fixing their Windows-hosted packaging and launcher checks.
+- Show the selected iOS simulator runtime and live boot progress, with up to
+  ten minutes for CI cold boots and a separate app-verification deadline.
+  Preserve console output, reports and simulator diagnostics on failure,
+  and attempt cleanup even when simulator commands time out.
 - Recognize classroom-quiz answer feedback in Choice hints, including Football
   Star's shuffled questions and finals. Correct answers turn green and wrong
   answers red without changing grades, timers, audio or saved state.

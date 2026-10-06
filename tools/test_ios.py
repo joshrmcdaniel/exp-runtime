@@ -24,6 +24,52 @@ def simctl(*args, timeout=60, check=True):
         raise
 
 
+def stop_process(process, description):
+    """Bound child cleanup without replacing the verification failure."""
+    try:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f'Could not stop {description}: {error}', file=sys.stderr, flush=True)
+
+
+def wait_for_boot(device, log, *, timeout=300):
+    """Boot the disposable device and relay boot/migration progress with a deadline."""
+    if timeout <= 0:
+        raise ValueError('Boot timeout must be positive')
+    print(f'simctl bootstatus {device}; allowing {timeout}s for simulator boot', flush=True)
+    started = time.monotonic()
+    progress = started + 30
+    with log.open('w') as output, log.open(encoding='utf-8', errors='replace') as reader:
+        process = subprocess.Popen(['xcrun', 'simctl', 'bootstatus', device, '-b', '-d'],
+                                   stdout=output, stderr=subprocess.STDOUT)
+        try:
+            while True:
+                code = process.poll()
+                chunk = reader.read()
+                if chunk:
+                    print(chunk, end='', flush=True)
+                now = time.monotonic()
+                if code is not None:
+                    if code != 0:
+                        raise RuntimeError(f'simctl bootstatus exited with status {code}; see {log}')
+                    print(f'Simulator boot completed in {now - started:.1f}s', flush=True)
+                    return
+                if now - started >= timeout:
+                    raise TimeoutError(f'Simulator did not finish booting within {timeout} seconds; see {log}')
+                if now >= progress:
+                    print(f'Waiting for simulator boot ({now - started:.0f}s elapsed, limit {timeout}s)...', flush=True)
+                    progress = now + 30
+                time.sleep(.2)
+        finally:
+            stop_process(process, 'simulator boot monitor')
+
+
 def wait_for_report(process, report, log, *, timeout=300):
     """Watch the app's report while simctl remains attached to its console."""
     if timeout <= 0:
@@ -75,26 +121,36 @@ def collect_failure(device, documents, diagnostics, error):
     print(f'Simulator failure diagnostics: {diagnostics}', file=sys.stderr, flush=True)
 
 
-def verify(bundle, content=(), *, timeout=300):
+def verify(bundle, content=(), *, timeout=300, boot_timeout=300):
     if timeout <= 0:
         raise ValueError('Verification timeout must be positive')
+    if boot_timeout <= 0:
+        raise ValueError('Boot timeout must be positive')
     output = ROOT / 'build/ios/verification-simulator.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.unlink(missing_ok=True)
     runtimes = json.loads(simctl('list', 'runtimes', '--json'))['runtimes']
+    diagnostics_root = output.parent / 'simulator-diagnostics'
+    diagnostics_root.mkdir(parents=True, exist_ok=True)
+    (diagnostics_root / 'runtimes.json').write_text(json.dumps(runtimes, indent=2) + '\n')
     candidates = [r for r in runtimes if r.get('isAvailable') and r['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')]
     if not candidates:
         raise ValueError('Install an iOS simulator runtime through Xcode before verification')
     runtime = max(candidates, key=lambda r: tuple(map(int, r['version'].split('.'))))
-    device_type = next(t['identifier'] for t in runtime['supportedDeviceTypes'] if t['name'].startswith('iPhone'))
-    device = simctl('create', 'EXP Runtime Verification', device_type, runtime['identifier'])
-    diagnostics = output.parent / 'simulator-diagnostics' / device
+    device_type = next((t for t in runtime['supportedDeviceTypes'] if t['name'].startswith('iPhone')), None)
+    if device_type is None:
+        raise ValueError(f'No supported iPhone device type for {runtime["name"]}')
+    print(f'Selected available runtime {runtime["name"]} ({runtime["identifier"]}); '
+          f'device {device_type["name"]} ({device_type["identifier"]})', flush=True)
+    device = simctl('create', 'EXP Runtime Verification', device_type['identifier'], runtime['identifier'])
+    diagnostics = diagnostics_root / device
     documents = None
     process = None
     try:
         diagnostics.mkdir(parents=True, exist_ok=True)
-        simctl('boot', device)
-        simctl('bootstatus', device, '-b', timeout=300)
+        (diagnostics / 'device.json').write_text(json.dumps(
+            dict(device=device, runtime=runtime, device_type=device_type), indent=2) + '\n')
+        wait_for_boot(device, diagnostics / 'boot.log', timeout=boot_timeout)
         simctl('install', device, bundle)
         container = Path(simctl('get_app_container', device, APP_ID, 'data'))
         documents = container / 'Documents'
@@ -134,16 +190,7 @@ def verify(bundle, content=(), *, timeout=300):
         # --console stays attached until the app exits. Stop only this
         # launch process after collecting screenshots/reports/diagnostics.
         if process is not None:
-            try:
-                if process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=5)
-            except (OSError, subprocess.SubprocessError) as error:
-                print(f'Could not stop simulator console: {error}', file=sys.stderr, flush=True)
+            stop_process(process, 'simulator console')
         for args in (('terminate', device, APP_ID), ('shutdown', device), ('delete', device)):
             try:
                 simctl(*args, timeout=20, check=False)
@@ -157,5 +204,6 @@ if __name__ == '__main__':
     parser.add_argument('--content', nargs=2, action='append', metavar=('GAME', 'ARCHIVE'), default=[],
                         help='Optionally test a locally supplied game archive in the temporary simulator only')
     parser.add_argument('--timeout', type=int, default=300, help='Maximum seconds for app startup and verification')
+    parser.add_argument('--boot-timeout', type=int, default=300, help='Maximum seconds for simulator boot, before app verification')
     args = parser.parse_args()
-    verify(args.bundle.resolve(), args.content, timeout=args.timeout)
+    verify(args.bundle.resolve(), args.content, timeout=args.timeout, boot_timeout=args.boot_timeout)

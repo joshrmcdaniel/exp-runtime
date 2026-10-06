@@ -37,10 +37,60 @@ class SimulatorVerificationTests(unittest.TestCase):
         self.process.poll.return_value = None
         self.passed = dict(status='passed', platform='ios', checks=['authored verification'])
         self.calls = []
+        self.streams = {}
         for stream in ('sys.stdout', 'sys.stderr'):
             redirect = patch(stream, new_callable=io.StringIO)
-            redirect.start()
+            self.streams[stream] = redirect.start()
             self.addCleanup(redirect.stop)
+
+    def test_cold_boot_reports_progress_before_completion_with_its_own_budget(self):
+        log = self.diagnostics / 'boot.log'
+        clock = Clock()
+
+        def boot_progress(elapsed):
+            if not log.read_text():
+                with log.open('a') as output:
+                    output.write('Waiting on Data Migration\n')
+            if elapsed > 1:
+                self.assertIn('Waiting on Data Migration', self.streams['sys.stdout'].getvalue())
+
+        clock.on_sleep = boot_progress
+        self.process.poll.side_effect = lambda: 0 if clock.elapsed >= 310 else None
+        with patch.object(test_ios, 'time', clock), \
+                patch.object(test_ios.subprocess, 'Popen', return_value=self.process):
+            test_ios.wait_for_boot('authored-device', log, timeout=600)
+        self.assertGreaterEqual(clock.elapsed, 310)
+        console = self.streams['sys.stdout'].getvalue()
+        self.assertEqual(console.count('Waiting on Data Migration'), 1)
+        self.assertIn('30s elapsed, limit 600s', console)
+        self.assertIn('Simulator boot completed', console)
+        self.process.terminate.assert_not_called()
+
+    def test_boot_timeout_stops_its_monitor_and_preserves_failure_output(self):
+        log = self.diagnostics / 'boot.log'
+        clock = Clock()
+        self.process.wait.side_effect = [subprocess.TimeoutExpired('bootstatus', 5), 0]
+        with patch.object(test_ios, 'time', clock), \
+                patch.object(test_ios.subprocess, 'Popen', return_value=self.process):
+            with self.assertRaisesRegex(TimeoutError, 'booting within 3 seconds'):
+                test_ios.wait_for_boot('authored-device', log, timeout=3)
+        self.assertLess(clock.elapsed, 3.3)
+        self.process.terminate.assert_called_once()
+        self.process.kill.assert_called_once()
+
+        def failed_boot(*args, **kwargs):
+            kwargs['stdout'].write('Authored boot failure\n')
+            kwargs['stdout'].flush()
+            self.process.poll.return_value = 1
+            return self.process
+
+        with patch.object(test_ios.subprocess, 'Popen', side_effect=failed_boot):
+            with self.assertRaisesRegex(RuntimeError, 'bootstatus exited with status 1'):
+                test_ios.wait_for_boot('authored-device', log)
+        self.assertEqual(log.read_text(), 'Authored boot failure\n')
+        self.assertIn('Authored boot failure', self.streams['sys.stdout'].getvalue())
+        with self.assertRaisesRegex(ValueError, 'positive'):
+            test_ios.wait_for_boot('authored-device', log, timeout=0)
 
     def wait(self, clock, **kwargs):
         with patch.object(test_ios, 'time', clock):
@@ -93,14 +143,46 @@ class SimulatorVerificationTests(unittest.TestCase):
 
     def test_success_keeps_app_alive_for_capture_then_stops_console_and_device(self):
         with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', self.simctl), \
+                patch.object(test_ios, 'wait_for_boot') as boot, \
                 patch.object(test_ios.subprocess, 'Popen', return_value=self.process), \
                 patch.object(test_ios, 'wait_for_report', return_value=self.passed):
-            result = test_ios.verify(self.root / 'authored.app')
+            result = test_ios.verify(self.root / 'authored.app', boot_timeout=600)
         self.assertEqual(result, self.passed)
         saved = json.loads((self.root / 'build/ios/verification-simulator.json').read_text())
         self.assertEqual(saved['checks'], self.passed['checks'])
         self.assertEqual(saved['simulator'], 'iOS authored')
+        diagnostics = self.root / 'build/ios/simulator-diagnostics'
+        boot.assert_called_once_with('authored-device', diagnostics / 'authored-device/boot.log', timeout=600)
+        device = json.loads((diagnostics / 'authored-device/device.json').read_text())
+        self.assertEqual(device['runtime'], json.loads((diagnostics / 'runtimes.json').read_text())[0])
+        self.assertEqual(device['device_type']['identifier'], 'authored-phone')
         self.process.terminate.assert_called_once()
+        self.assertEqual([c[0] for c in self.calls[-3:]], ['terminate', 'shutdown', 'delete'])
+
+    def test_missing_runtime_stops_before_creating_a_device(self):
+        runtimes = [dict(isAvailable=False, version='26.0', name='iOS unavailable',
+                         identifier='com.apple.CoreSimulator.SimRuntime.iOS-unavailable')]
+        with patch.object(test_ios, 'ROOT', self.root), \
+                patch.object(test_ios, 'simctl', return_value=json.dumps(dict(runtimes=runtimes))) as simctl:
+            with self.assertRaisesRegex(ValueError, 'Install an iOS simulator runtime'):
+                test_ios.verify(self.root / 'authored.app')
+        simctl.assert_called_once_with('list', 'runtimes', '--json')
+        inventory = self.root / 'build/ios/simulator-diagnostics/runtimes.json'
+        self.assertEqual(json.loads(inventory.read_text()), runtimes)
+
+    def test_boot_failure_prevents_app_installation_but_still_collects_and_cleans_up(self):
+        original = TimeoutError('authored boot timeout')
+        with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', self.simctl), \
+                patch.object(test_ios, 'wait_for_boot', side_effect=original), \
+                patch.object(test_ios, 'collect_failure') as diagnostics, \
+                patch.object(test_ios.subprocess, 'Popen') as launch:
+            with self.assertRaises(TimeoutError) as raised:
+                test_ios.verify(self.root / 'authored.app')
+        self.assertIs(raised.exception, original)
+        self.assertNotIn('install', [c[0] for c in self.calls])
+        launch.assert_not_called()
+        diagnostics.assert_called_once_with('authored-device', None,
+            self.root / 'build/ios/simulator-diagnostics/authored-device', original)
         self.assertEqual([c[0] for c in self.calls[-3:]], ['terminate', 'shutdown', 'delete'])
 
     def test_failure_preserves_diagnostics_and_original_error_despite_cleanup_timeouts(self):
@@ -122,6 +204,7 @@ class SimulatorVerificationTests(unittest.TestCase):
 
         self.process.wait.side_effect = [subprocess.TimeoutExpired('console', 5), 0]
         with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', calls), \
+                patch.object(test_ios, 'wait_for_boot'), \
                 patch.object(test_ios.subprocess, 'Popen', return_value=self.process), \
                 patch.object(test_ios, 'wait_for_report', side_effect=original), \
                 patch.object(test_ios, 'collect_failure', side_effect=diagnostics):

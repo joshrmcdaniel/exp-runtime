@@ -76,7 +76,7 @@ def remember_library(directory, game='shs'):
     if sys.platform == 'ios':
         # Documents move with the app container. Store paths relative to the
         # shared library root, never the current installation's UUID.
-        locations = {key: path.resolve().relative_to(root.resolve()) for key, path in locations.items()}
+        locations = {key: path.resolve().relative_to(root.resolve()).as_posix() for key, path in locations.items()}
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=root,
