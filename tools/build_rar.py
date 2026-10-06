@@ -50,7 +50,7 @@ def build(*, offline=False):
         source.extractall(directory, **({'filter': 'data'} if hasattr(tarfile, 'data_filter') else {}))
     source = directory / f'libarchive-{VERSION}'
     disabled = ('MBEDTLS NETTLE OPENSSL LIBB2 LZ4 LZO LZMA ZSTD ZLIB BZip2 LIBXML2 EXPAT '
-                'WIN32_XMLLITE PCREPOSIX PCRE2POSIX LIBGCC CNG TAR CPIO CAT UNZIP '
+                'WIN32_XMLLITE PCREPOSIX PCRE2POSIX LIBGCC TAR CPIO CAT UNZIP '
                 'XATTR ACL ICONV TEST COVERAGE CLANG_TIDY').split()
     # RAR import does not use regex. libarchive 3.8.9's AUTO provider search
     # requires libgcc on MSVC even when both PCRE providers are disabled.
@@ -58,6 +58,9 @@ def build(*, offline=False):
             '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON',
             f'-DCMAKE_INSTALL_PREFIX={install}', '-DCMAKE_INSTALL_LIBDIR=lib',
             '-DENABLE_INSTALL=ON', '-DPOSIX_REGEX_LIB=NONE',
+            # Windows random/temp-file helpers require the system BCrypt API
+            # even without encrypted archives. CNG enables its link library.
+            f'-DENABLE_CNG={"ON" if sys.platform == "win32" else "OFF"}',
             *[f'-DENABLE_{name}=OFF' for name in disabled]]
     # Bundle the C runtime with the DLL instead of requiring a separately
     # installed Visual C++ runtime on the player's machine.

@@ -51,6 +51,15 @@ jobs:
       - name: Verify shared engine and native presentation on iOS
         run: uv run --locked --extra desktop python tools/test_ios.py
 
+      - name: Upload simulator failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-simulator-diagnostics
+          path: build/ios/simulator-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Build unsigned device app
         run: uv run --locked --extra desktop python tools/build_ios.py --sdk iphoneos
 

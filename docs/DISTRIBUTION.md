@@ -79,6 +79,9 @@ use their OS library, so Apple builds need no additional dependency download.
 The builder also disables unused POSIX regex support explicitly: libarchive
 3.8.9's automatic provider search otherwise requires libgcc on MSVC even with
 PCRE disabled.
+Windows builds explicitly enable CNG so CMake links the system BCrypt library,
+which libarchive's random-number and temporary-file helpers require even when
+reading unencrypted archives. This adds no third-party runtime dependency.
 
 The build bundles Python and the runtime dependencies. No APK, IPA, EXPs, Ghidra,
 Ren'Py SDK, extracted resources or old checkout are required to build it.

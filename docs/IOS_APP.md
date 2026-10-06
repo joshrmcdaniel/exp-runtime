@@ -157,6 +157,19 @@ iOS/Python/Pillow versions in `build/ios/verification-simulator.json`.
 `build/ios/verification-window.png` captures the full phone screen, including
 safe areas and letterboxing, for visual inspection.
 
+Simulator boot has a five-minute limit. App startup and self-tests then have
+their own five-minute limit, configurable with `--timeout SECONDS`. The runner
+attaches to the app's console while watching for its final report and prints
+progress during the wait. An early exit, failed report or expired deadline
+still fails verification. Cleanup attempts termination, shutdown and deletion
+without replacing the original failure if another simulator command hangs.
+
+Console output stays under `build/ios/simulator-diagnostics/<device-id>/`.
+On failure, the runner also saves available app reports, simulator logs and a
+screenshot before cleanup. The iOS workflow uploads this directory as the
+`ios-simulator-diagnostics` artifact when verification fails. Optional original
+content checks remain local; CI diagnostic uploads use only authored fixtures.
+
 The authored checks require no original content and cover:
 
 - Pillow image decoding and the embedded native extensions.
