@@ -38,15 +38,15 @@ def stop_process(process, description):
         print(f'Could not stop {description}: {error}', file=sys.stderr, flush=True)
 
 
-def wait_for_boot(device, log, *, timeout=300):
-    """Boot the disposable device and relay boot/migration progress with a deadline."""
+def run_simctl_step(args, log, *, label, timeout):
+    """Run a bounded simulator step, retaining output and reporting slow progress."""
     if timeout <= 0:
-        raise ValueError('Boot timeout must be positive')
-    print(f'simctl bootstatus {device}; allowing {timeout}s for simulator boot', flush=True)
+        raise ValueError(f'{label} timeout must be positive')
+    print(f'simctl {args[0]} {args[1]}; allowing {timeout}s for {label.lower()}', flush=True)
     started = time.monotonic()
     progress = started + 30
     with log.open('w') as output, log.open(encoding='utf-8', errors='replace') as reader:
-        process = subprocess.Popen(['xcrun', 'simctl', 'bootstatus', device, '-b', '-d'],
+        process = subprocess.Popen(['xcrun', 'simctl', *map(str, args)],
                                    stdout=output, stderr=subprocess.STDOUT)
         try:
             while True:
@@ -57,17 +57,27 @@ def wait_for_boot(device, log, *, timeout=300):
                 now = time.monotonic()
                 if code is not None:
                     if code != 0:
-                        raise RuntimeError(f'simctl bootstatus exited with status {code}; see {log}')
-                    print(f'Simulator boot completed in {now - started:.1f}s', flush=True)
+                        raise RuntimeError(f'simctl {args[0]} exited with status {code}; see {log}')
+                    print(f'{label} completed in {now - started:.1f}s', flush=True)
                     return
                 if now - started >= timeout:
-                    raise TimeoutError(f'Simulator did not finish booting within {timeout} seconds; see {log}')
+                    raise TimeoutError(f'{label} did not finish within {timeout} seconds; see {log}')
                 if now >= progress:
-                    print(f'Waiting for simulator boot ({now - started:.0f}s elapsed, limit {timeout}s)...', flush=True)
+                    print(f'Waiting for {label.lower()} ({now - started:.0f}s elapsed, limit {timeout}s)...', flush=True)
                     progress = now + 30
                 time.sleep(.2)
         finally:
-            stop_process(process, 'simulator boot monitor')
+            stop_process(process, f'{label.lower()} monitor')
+
+
+def wait_for_boot(device, log, *, timeout=300):
+    """Boot the disposable device and relay boot/migration progress with a deadline."""
+    run_simctl_step(('bootstatus', device, '-b', '-d'), log, label='Simulator boot', timeout=timeout)
+
+
+def install_app(device, bundle, log, *, timeout=300):
+    """Wait for installation independently of boot and app startup budgets."""
+    run_simctl_step(('install', device, bundle), log, label='App installation', timeout=timeout)
 
 
 def wait_for_report(process, report, log, *, timeout=300):
@@ -108,7 +118,8 @@ def collect_failure(device, documents, diagnostics, error):
     commands = (
         ('devices.log', ('list', 'devices', '--json')),
         ('system.log', ('spawn', device, 'log', 'show', '--style', 'compact', '--last', '5m',
-                        '--predicate', 'process == "EXP Runtime" OR process == "SpringBoard" OR process == "runningboardd"')),
+                        '--predicate', 'process == "EXP Runtime" OR process == "SpringBoard" OR process == "runningboardd" '
+                        'OR process == "installd" OR process == "installcoordinationd" OR process == "lsd"')),
         ('screenshot.log', ('io', device, 'screenshot', diagnostics / 'failure.png')),
     )
     for name, args in commands:
@@ -121,11 +132,13 @@ def collect_failure(device, documents, diagnostics, error):
     print(f'Simulator failure diagnostics: {diagnostics}', file=sys.stderr, flush=True)
 
 
-def verify(bundle, content=(), *, timeout=300, boot_timeout=300):
+def verify(bundle, content=(), *, timeout=300, boot_timeout=300, install_timeout=300):
     if timeout <= 0:
         raise ValueError('Verification timeout must be positive')
     if boot_timeout <= 0:
         raise ValueError('Boot timeout must be positive')
+    if install_timeout <= 0:
+        raise ValueError('Installation timeout must be positive')
     output = ROOT / 'build/ios/verification-simulator.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.unlink(missing_ok=True)
@@ -151,7 +164,7 @@ def verify(bundle, content=(), *, timeout=300, boot_timeout=300):
         (diagnostics / 'device.json').write_text(json.dumps(
             dict(device=device, runtime=runtime, device_type=device_type), indent=2) + '\n')
         wait_for_boot(device, diagnostics / 'boot.log', timeout=boot_timeout)
-        simctl('install', device, bundle)
+        install_app(device, bundle, diagnostics / 'install.log', timeout=install_timeout)
         container = Path(simctl('get_app_container', device, APP_ID, 'data'))
         documents = container / 'Documents'
         documents.mkdir(exist_ok=True)
@@ -205,5 +218,7 @@ if __name__ == '__main__':
                         help='Optionally test a locally supplied game archive in the temporary simulator only')
     parser.add_argument('--timeout', type=int, default=300, help='Maximum seconds for app startup and verification')
     parser.add_argument('--boot-timeout', type=int, default=300, help='Maximum seconds for simulator boot, before app verification')
+    parser.add_argument('--install-timeout', type=int, default=300, help='Maximum seconds for app installation, after boot and before launch')
     args = parser.parse_args()
-    verify(args.bundle.resolve(), args.content, timeout=args.timeout, boot_timeout=args.boot_timeout)
+    verify(args.bundle.resolve(), args.content, timeout=args.timeout, boot_timeout=args.boot_timeout,
+           install_timeout=args.install_timeout)

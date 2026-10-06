@@ -72,7 +72,7 @@ class SimulatorVerificationTests(unittest.TestCase):
         self.process.wait.side_effect = [subprocess.TimeoutExpired('bootstatus', 5), 0]
         with patch.object(test_ios, 'time', clock), \
                 patch.object(test_ios.subprocess, 'Popen', return_value=self.process):
-            with self.assertRaisesRegex(TimeoutError, 'booting within 3 seconds'):
+            with self.assertRaisesRegex(TimeoutError, 'Simulator boot did not finish within 3 seconds'):
                 test_ios.wait_for_boot('authored-device', log, timeout=3)
         self.assertLess(clock.elapsed, 3.3)
         self.process.terminate.assert_called_once()
@@ -95,6 +95,115 @@ class SimulatorVerificationTests(unittest.TestCase):
     def wait(self, clock, **kwargs):
         with patch.object(test_ios, 'time', clock):
             return test_ios.wait_for_report(self.process, self.report, self.diagnostics / 'launch.log', **kwargs)
+
+    def test_slow_install_streams_output_and_completes_after_the_old_sixty_second_limit(self):
+        log = self.diagnostics / 'install.log'
+        bundle = self.root / 'EXP Runtime.app'
+        clock = Clock()
+
+        def install_progress(elapsed):
+            if not log.read_text():
+                with log.open('a') as output:
+                    output.write('Authored installation progress\n')
+            if elapsed > 1:
+                self.assertIn('Authored installation progress', self.streams['sys.stdout'].getvalue())
+
+        clock.on_sleep = install_progress
+        self.process.poll.side_effect = lambda: 0 if clock.elapsed >= 65 else None
+        with patch.object(test_ios, 'time', clock), \
+                patch.object(test_ios.subprocess, 'Popen', return_value=self.process) as start:
+            test_ios.install_app('authored-device', bundle, log)
+        self.assertGreaterEqual(clock.elapsed, 65)
+        self.assertEqual(start.call_args.args[0], ['xcrun', 'simctl', 'install', 'authored-device', str(bundle)])
+        self.assertEqual(start.call_args.kwargs['stderr'], subprocess.STDOUT)
+        console = self.streams['sys.stdout'].getvalue()
+        self.assertEqual(console.count('Authored installation progress'), 1)
+        self.assertIn('Waiting for app installation (30s elapsed, limit 300s)', console)
+        self.assertIn('App installation completed', console)
+        self.process.terminate.assert_not_called()
+
+    def test_install_failure_or_timeout_keeps_logs_and_never_launches_the_app(self):
+        for code in (1, None):
+            with self.subTest(exit_code=code):
+                saved = self.root / 'build/ios/verification-simulator.json'
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                saved.write_text(json.dumps(self.passed))
+                process = Mock()
+                process.poll.return_value = code
+                process.wait.side_effect = [subprocess.TimeoutExpired('install', 5), 0]
+                clock = Clock()
+
+                def start(args, **kwargs):
+                    self.assertEqual(args[2], 'install')
+                    kwargs['stdout'].write('Authored installer diagnostic\n')
+                    kwargs['stdout'].flush()
+                    return process
+
+                self.calls.clear()
+                with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', self.simctl), \
+                        patch.object(test_ios, 'time', clock), patch.object(test_ios, 'wait_for_boot'), \
+                        patch.object(test_ios.subprocess, 'Popen', side_effect=start) as popen, \
+                        patch.object(test_ios.subprocess, 'run', return_value=Mock(returncode=0)), \
+                        patch.object(test_ios, 'wait_for_report') as report:
+                    message = 'installation did not finish within 3 seconds' if code is None else 'install exited with status 1'
+                    with self.assertRaisesRegex(TimeoutError if code is None else RuntimeError, message):
+                        test_ios.verify(self.root / 'authored.app', install_timeout=3)
+                popen.assert_called_once()
+                report.assert_not_called()
+                self.assertNotIn('get_app_container', [c[0] for c in self.calls])
+                self.assertFalse(saved.exists())
+                diagnostics = saved.parent / 'simulator-diagnostics/authored-device'
+                self.assertIn(message, (diagnostics / 'failure.txt').read_text())
+                self.assertEqual((diagnostics / 'install.log').read_text(), 'Authored installer diagnostic\n')
+                self.assertEqual([c[0] for c in self.calls[-3:]], ['terminate', 'shutdown', 'delete'])
+                if code is None:
+                    self.assertLess(clock.elapsed, 3.3)
+                    process.terminate.assert_called_once()
+                    process.kill.assert_called_once()
+                else:
+                    process.terminate.assert_not_called()
+
+    def test_nonpositive_install_budget_is_rejected_before_creating_a_simulator(self):
+        with patch.object(test_ios, 'simctl') as simctl, patch.object(test_ios.subprocess, 'Popen') as start:
+            for timeout in (0, -1):
+                with self.assertRaisesRegex(ValueError, 'positive'):
+                    test_ios.install_app('authored-device', self.root / 'authored.app',
+                                         self.diagnostics / 'install.log', timeout=timeout)
+                with self.assertRaisesRegex(ValueError, 'positive'):
+                    test_ios.verify(self.root / 'authored.app', install_timeout=timeout)
+            simctl.assert_not_called()
+            start.assert_not_called()
+
+    def test_boot_install_and_startup_each_get_their_full_time_budget(self):
+        clock = Clock()
+        installer = Mock()
+        installer.poll.side_effect = lambda: 0 if clock.elapsed >= 375 else None
+        launched = []
+
+        def boot(*args, **kwargs):
+            clock.elapsed = 310
+
+        def start(args, **kwargs):
+            if args[2] == 'install':
+                return installer
+            self.assertEqual(args[2], 'launch')
+            self.assertGreaterEqual(clock.elapsed, 375)
+            launched.append(clock.elapsed)
+            return self.process
+
+        def complete(elapsed):
+            if launched and elapsed - launched[0] >= 65:
+                self.report.write_text(json.dumps(self.passed))
+
+        clock.on_sleep = complete
+        with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', self.simctl), \
+                patch.object(test_ios, 'time', clock), patch.object(test_ios, 'wait_for_boot', side_effect=boot), \
+                patch.object(test_ios.subprocess, 'Popen', side_effect=start):
+            result = test_ios.verify(self.root / 'authored.app', boot_timeout=600, install_timeout=90, timeout=90)
+        self.assertEqual(result, self.passed)
+        self.assertGreaterEqual(clock.elapsed, 440)
+        installer.terminate.assert_not_called()
+        self.process.terminate.assert_called_once()
 
     def test_slow_startup_can_complete_while_console_stays_attached(self):
         def write_report(elapsed):
@@ -144,15 +253,20 @@ class SimulatorVerificationTests(unittest.TestCase):
     def test_success_keeps_app_alive_for_capture_then_stops_console_and_device(self):
         with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', self.simctl), \
                 patch.object(test_ios, 'wait_for_boot') as boot, \
+                patch.object(test_ios, 'install_app') as install, \
                 patch.object(test_ios.subprocess, 'Popen', return_value=self.process), \
-                patch.object(test_ios, 'wait_for_report', return_value=self.passed):
-            result = test_ios.verify(self.root / 'authored.app', boot_timeout=600)
+                patch.object(test_ios, 'wait_for_report', return_value=self.passed) as report:
+            result = test_ios.verify(self.root / 'authored.app', boot_timeout=600, install_timeout=180, timeout=120)
         self.assertEqual(result, self.passed)
         saved = json.loads((self.root / 'build/ios/verification-simulator.json').read_text())
         self.assertEqual(saved['checks'], self.passed['checks'])
         self.assertEqual(saved['simulator'], 'iOS authored')
         diagnostics = self.root / 'build/ios/simulator-diagnostics'
         boot.assert_called_once_with('authored-device', diagnostics / 'authored-device/boot.log', timeout=600)
+        install.assert_called_once_with('authored-device', self.root / 'authored.app',
+                                        diagnostics / 'authored-device/install.log', timeout=180)
+        report.assert_called_once_with(self.process, self.report,
+                                       diagnostics / 'authored-device/launch.log', timeout=120)
         device = json.loads((diagnostics / 'authored-device/device.json').read_text())
         self.assertEqual(device['runtime'], json.loads((diagnostics / 'runtimes.json').read_text())[0])
         self.assertEqual(device['device_type']['identifier'], 'authored-phone')
@@ -174,12 +288,14 @@ class SimulatorVerificationTests(unittest.TestCase):
         original = TimeoutError('authored boot timeout')
         with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', self.simctl), \
                 patch.object(test_ios, 'wait_for_boot', side_effect=original), \
+                patch.object(test_ios, 'install_app') as install, \
                 patch.object(test_ios, 'collect_failure') as diagnostics, \
                 patch.object(test_ios.subprocess, 'Popen') as launch:
             with self.assertRaises(TimeoutError) as raised:
                 test_ios.verify(self.root / 'authored.app')
         self.assertIs(raised.exception, original)
         self.assertNotIn('install', [c[0] for c in self.calls])
+        install.assert_not_called()
         launch.assert_not_called()
         diagnostics.assert_called_once_with('authored-device', None,
             self.root / 'build/ios/simulator-diagnostics/authored-device', original)
@@ -205,6 +321,7 @@ class SimulatorVerificationTests(unittest.TestCase):
         self.process.wait.side_effect = [subprocess.TimeoutExpired('console', 5), 0]
         with patch.object(test_ios, 'ROOT', self.root), patch.object(test_ios, 'simctl', calls), \
                 patch.object(test_ios, 'wait_for_boot'), \
+                patch.object(test_ios, 'install_app'), \
                 patch.object(test_ios.subprocess, 'Popen', return_value=self.process), \
                 patch.object(test_ios, 'wait_for_report', side_effect=original), \
                 patch.object(test_ios, 'collect_failure', side_effect=diagnostics):
@@ -225,6 +342,9 @@ class SimulatorVerificationTests(unittest.TestCase):
         self.assertIn('startup', (self.diagnostics / 'failure.txt').read_text())
         self.assertIn('Diagnostic command failed', (self.diagnostics / 'devices.log').read_text())
         self.assertEqual(run.call_count, 3)
+        predicate = run.call_args_list[1].args[0][-1]
+        for process in ('installd', 'installcoordinationd', 'lsd'):
+            self.assertIn(f'process == "{process}"', predicate)
 
 
 if __name__ == '__main__':

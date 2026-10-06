@@ -170,7 +170,11 @@ Simulator boot defaults to a five-minute limit, configurable with
 `--boot-timeout SECONDS`; CI allows ten minutes for a cold boot. The runner
 prints the selected available runtime/device, relays `bootstatus` boot and
 data-migration output, and prints elapsed time every 30 seconds while waiting.
-It must finish booting successfully before the app is installed. App startup
+It must finish booting successfully before the app is installed. Installation
+has its own five-minute limit, configurable with `--install-timeout SECONDS`,
+and streams any installer output with progress every 30 seconds. CI explicitly
+allows five minutes for installation. A failed or timed-out install prevents
+launch; it is never accepted as a successful verification. App startup
 and self-tests then have their own five-minute limit, configurable with
 `--timeout SECONDS`. The runner attaches to the app's console while watching
 for its final report and prints progress during the wait. An early exit, failed
@@ -178,11 +182,13 @@ report or expired deadline still fails verification. Cleanup attempts terminatio
 shutdown and deletion without replacing the original failure if another
 simulator command hangs.
 
-Boot and app console output stay in `boot.log` and `launch.log` under
+Boot, installation and app console output stay in `boot.log`, `install.log`
+and `launch.log` under
 `build/ios/simulator-diagnostics/<device-id>/`, alongside selected-device
 metadata. The parent directory also retains the installed runtime inventory.
-On failure, the runner also saves available app reports, simulator logs and a
-screenshot before cleanup. The iOS workflow uploads this directory as the
+On failure, the runner also saves available app reports, simulator logs
+(including installation services) and a screenshot before cleanup. The iOS
+workflow uploads this directory as the
 `ios-simulator-diagnostics` artifact when verification fails. Optional original
 content checks remain local; CI diagnostic uploads use only authored fixtures.
 

@@ -46,7 +46,7 @@ jobs:
         run: uv run --locked --extra desktop python tools/build_ios.py --sdk iphonesimulator
 
       - name: Verify shared engine and native presentation on iOS
-        run: uv run --locked --extra desktop python tools/test_ios.py --boot-timeout 600
+        run: uv run --locked --extra desktop python tools/test_ios.py --boot-timeout 600 --install-timeout 300
 
       - name: Upload simulator failure diagnostics
         if: failure()
