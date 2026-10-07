@@ -242,6 +242,10 @@ explain why the dependency is needed. Do not include generated build output.
 The repository owner handles merges, version tags and publication. Before a
 release, update the root [RELEASE.md](RELEASE.md), which supplies the GitHub
 release body, and move the relevant changelog entries into a versioned section
-with the release date. Keep the package version and release tag consistent.
-The workflow publishes downloads after all four builds pass for a pushed
-version tag; ordinary pull requests produce development artifacts.
+with the release date. Keep `pyproject.toml`, `uv.lock`, both Xcode
+`MARKETING_VERSION` settings in `ios/EXPRuntime.xcodeproj/project.pbxproj`, and
+the intended release tag consistent. The macOS bundle and command-line iOS
+build read the package version; direct Xcode builds use the project settings.
+The workflow publishes downloads after all four desktop builds and iOS
+verification pass for a pushed version tag; ordinary pull requests produce
+development artifacts.
