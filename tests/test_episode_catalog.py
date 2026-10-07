@@ -372,7 +372,7 @@ class GameCatalogImportTests(unittest.TestCase):
         (self.root / 'COD_OPTIONS.SAV').write_bytes(cod_options([]))
         with patch.dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy'):
             for game in ('shs', 'cod'):
-                app = Application(self.root / 'absent-library', audio=False, game_key=game)
+                app = Application(self.root / 'absent-library', audio=False, game_key=game, check_updates=False)
                 try:
                     app.browser_kind = 'episodes'
                     app.read_folder(self.root)
@@ -394,7 +394,7 @@ class CatalogBrowserTests(unittest.TestCase):
             root, source = Path(directory), Path('.shs-library').resolve()
             (root / 'library.json').write_bytes((source / 'library.json').read_bytes())
             (root / 'content').symlink_to(source / 'content', target_is_directory=True)
-            app = Application(root, audio=False)
+            app = Application(root, audio=False, check_updates=False)
             self.addCleanup(app.close)
             app.library.catalog = EpisodeCatalog()
             app.query = app.renderer.strings[82]  # APK-derived category, no options sidecar.

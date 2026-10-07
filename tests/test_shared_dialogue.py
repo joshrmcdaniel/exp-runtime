@@ -130,7 +130,7 @@ class SharedDialogueTests(unittest.TestCase):
                 self.assertNotEqual(restored.pending.details['page_end'], old['pending']['details']['page_end'])
                 self.assertTrue(restored.engine.speaker_names.fonts)
                 current = restored.snapshot()
-                self.assertEqual(current['version'], 19)
+                self.assertEqual(current['version'], 21)
                 self.assertEqual(Session.from_snapshot(session.resources, current).snapshot(), current)
                 current['pending']['details']['page_end'] -= 1
                 with self.assertRaisesRegex(SaveError, 'page does not match'):
@@ -167,7 +167,7 @@ class SharedDialogueTests(unittest.TestCase):
             self.assertEqual(restored.pending.details['page_start'], old['pending']['details']['page_start'])
             self.assertNotEqual(restored.pending.details['page_end'], old['pending']['details']['page_end'])
             current = restored.snapshot()
-            self.assertEqual(current['version'], 19)
+            self.assertEqual(current['version'], 21)
             self.assertEqual(Session.from_snapshot(session.resources, current).snapshot(), current)
             bad = deepcopy(old)
             bad['engine']['speaker_names']['fonts']['PajamaHip26']['lines'] += 1

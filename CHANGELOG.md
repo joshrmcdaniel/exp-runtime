@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Honor the script's music repeat flag on desktop and iOS. Repeating CoD
+  story tracks keep playing; one-shot cues and the native CoD menu theme
+  still finish normally. Pause/resume preserves the repeat setting.
+- Restore the original iOS dialogue-box entrance for portrait speakers in
+  both games: 120 ms from the portrait to a narrow strip, then 200 ms to full
+  height. Keep the common layout and fixed-size border pieces. Save/load
+  preserves an entrance in progress; older saves retain their full-size box.
+- Complete the recovered dialogue lifecycle for SHS and CoD: grow narration
+  from the retained portrait position, clip only the outer portrait frame at
+  box completion, and use the native shake hold, scale and rotation timing.
+  Early reveal taps settle the box/name while portrait animation continues.
+- Restore neutral speaker entrances and delayed expression crossfades. Reuse
+  speaker state across choices, and clear expression caches at native scene
+  boundaries. Save version 21 preserves these states; older saves remain
+  readable without replaying their current dialogue.
+
 ## v0.4.1
 
 ### Fixed

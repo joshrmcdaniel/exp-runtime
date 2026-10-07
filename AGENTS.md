@@ -44,7 +44,11 @@ as the available reference for the reported identical iOS/Android interface.
 The owner selected v0.1.3's SHS skin as the common presentation reference,
 then supplied original screenshots and requested native verification of the
 general title fix. Keep a common dialogue renderer; adapters supply each
-game's assets and native font metrics. Do not introduce a separate IPA layout.
+game’s assets and native font metrics. Do not introduce a separate IPA layout.
+The owner subsequently selected the verified iOS dialogue-box opening
+animation for both games/platforms (120 ms travel, then 200 ms expansion).
+This overrides Android's immediate box display; retain the common final
+geometry. See docs/UI_FIDELITY.md for recovered paths and remaining limits.
 Ghidra confirms that both iOS games wrap names at the native region width,
 select a normal/tall header, and keep ordinary body text in its own region.
 Honor those outline-font rules and Android's distinct bitmap-label rules.

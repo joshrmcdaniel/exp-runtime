@@ -124,7 +124,7 @@ All rows derive from `native-yield-dispatcher.c`. Additional evidence is in `nat
 | 86 (`56`) | a1, a2, a3 flag | If a3==0, invokes `FUN_0007b488`, then background helper `FUN_000a92f4(panel,a1,a2)`. | 0 | C (background/pan; flag effect unresolved) |
 | 87 (`57`) | none read here | Reads scene field `+0x264` and narrows to a word; meaning unresolved. | word | X |
 | 88 (`58`) | T(1) | Queues substituted notification in panel-3 `+0xf0`; next dialogue consumes it. Original notice font, portrait-relative letter motion, length-based fade and tap dismissal; see [notification contract](STORY_SERVICES.md#dialogue-notifications-service-88). | 0 | C |
-| 89 (`59`) | none | Sets a one-shot flag for the next dialogue: box rotation and adjusted reveal delay. `FUN_0007c9e8`. | 0 | C |
+| 89 (`59`) | none | Sets a one-shot flag for the next dialogue. Shared presentation uses the recovered iOS hold/scale/rotation and +400 ms reveal delay; older saves retain the Android rotation. [Timing](UI_FIDELITY.md#shake-and-reveal-input). | 0 | C |
 | 90 (`5a`) | icon a1, optional T(2) when a2!=-1 | Nonblocking scene badge: -1 removes it; otherwise icon/text, layout 67 and 200 ms entrance. `FUN_0007b97c`. | 0 | C |
 | 91 (`5b`) | bool(stack[SP-argc]), even when argc=0 | Loading overlay gates VM execution until active time >3000 ms. A zero wait value completes the supplied frame immediately; nonzero retains it until `FUN_0009ea70` clears the overlay. Zero-argument calls read retained backing at SP. [Contract](STORY_SERVICES.md#loading-overlay-service-91). | R=0; UI cells unchanged | P |
 | 92 (`5c`) | none required by case | Explicit native default/no-op path; ordinary completion still removes the supplied argument frame. | 0 | X |
@@ -208,13 +208,30 @@ Service 72 `(character_id, base_id)` records five art slots natively. For positi
 
 Service 5 stores a signed low byte at the game-state offset given by a1. Service 13 reads that character byte as its default expression. Native helper `FUN_00095c60` selects art slot `expression % 5`. Panel helper `FUN_000ab048` also uses separate bytes at character+200, prior panel state, and relationship properties. NPC relationship icons, cache writes to owned keys 3000/3001, gain/loss sounds, and their animation delays are implemented; see [UI_FIDELITY.md](UI_FIDELITY.md#npc-relationship-indicators). Other expression and panel-lifecycle exceptions remain partial.
 
+The separate last-expression bytes now live in `engine.dialogue_history`.
+New speakers enter neutral; retained speakers use that cache. At one second
+the native iOS tick requests the target expression and updates the cached
+signed byte, independently of service 5's table. Two delayed opacity tracks
+then crossfade the art. Choices retain this speaker state. Loading a scheduled
+scene clears both 200-byte expression tables, as SHS `loadScript09NoGUI`
+**00020ab0** and CoD **00011f2c** do; ordinary name/art bindings remain intact.
+See [the lifecycle contract](UI_FIDELITY.md#delayed-expressions-and-panel-reuse).
+
 ### 3.4 Scheduling, defaults, and audio
 
 Service 10 `(script_id, flag)` appends a schedule record; records are consumed in LIFO order after the running VM halts. It returns 0 immediately. The flag's native panel effect is not rendered.
 
 Services 74 and 75 each accept one word and store separate numeric UI defaults. Native consumers can use -2 as a sentinel selecting a stored default; for example the panel setup in service 1 reads `DAT_002af012`. These services are not fade-in/fade-out actions.
 
-Service 79 selects a music request for IDs 8201–8232 and otherwise a sound-effect request. Service 80 stores a music ID and a flag; the flag is retained without assigning a speculative repeat/fade meaning. Service 81 accepts one word and calls the native audio-stop path. The desktop resolves the music cues below, plays the requested music once, plays the latest requested SFX, and stops music when requested. Native fades, looping, all channel semantics, and intermediate same-frame requests remain open.
+Service 79 selects a music request for IDs 8201–8232 in SHS (8201–8209 in CoD)
+and otherwise a sound-effect request. It requests one music playthrough.
+Service 80 stores a music ID and `bool(a2)` repeat flag. Both native iOS games'
+`SHSSound::setLoop:` translate this flag to AVAudioPlayer loop counts -1 / 0
+(CoD `00041e88`, SHS `00073fa8`). Desktop and native iOS playback now use the
+same convention, with the existing flag retained in saves. Service 81 accepts
+one word and calls the native stop/fade path; the runtime stops immediately.
+Native fades, changing a live track's repeat flag without restarting it,
+all channel semantics and intermediate same-frame requests remain partial.
 
 #### Android music cues
 
@@ -242,7 +259,8 @@ tracks, not missing standalone audio or approximate nearest-ID fallbacks.
 The Java path stops/releases the previous player, applies the first matching
 filename rule, prepares a new player, calls `seekTo(offset)` for nonzero
 offsets, sets music volume, then starts it. It does not set looping in this
-method. All other filenames start at zero. ID 8222 has neither a file nor a
+method; the shared player's repeat behavior follows the recovered iOS
+contract. All other filenames start at zero. ID 8222 has neither a file nor a
 redirect in the inspected APK; its missing-resource diagnostic remains valid.
 No replacement is inferred for it.
 
@@ -262,8 +280,8 @@ both must clear before playback resumes. Returning through the main menu to
 the same live session also preserves the playhead. Muting, service 81's stop,
 and a changed cue replace that playback state; resuming cannot revive a muted
 or replaced track. New sessions and explicit save loads still start their
-requested cue. These are desktop lifecycle rules, not recovered native loop
-or fade semantics. No audio transport fields are added to the save schema.
+requested cue. These are runtime lifecycle rules; native fades remain
+unimplemented. No audio transport fields are added to the save schema.
 
 Evidence: `SHS09SoundEngine.java` debug lines 145–253, inspected as Dalvik
 instructions in the player-supplied APK. The DEX hash is recorded in
@@ -347,7 +365,7 @@ sizes, gaps, line counts and indents, plus the native name exceptions, are
 implemented for the dialogue path and saved in version 10. Drawing applies
 a general glyph-bounds correction to prevent remaining name/body/portrait
 overlaps; this correction is not a verified native rule. Cross-object kerning,
-other widgets' shared font effects, secondary expressions, decorations and
+other widgets' shared font effects, special expression decorations and
 global transition locks remain partial. The recovered name branches and
 compatibility boundary are specified in
 [UI_FIDELITY.md](UI_FIDELITY.md#speaker-labels-and-persistent-font-state).

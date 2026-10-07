@@ -415,8 +415,9 @@ Service 13's negative prefixes are a separate field from presentation mode:
 `-2` wraps raw text with `(` and `)`, and `-3` wraps it with backticks. These
 decorations precede substitution. Neither prefix selects presentation mode 4.
 Explicit expression overrides pass through a signed low-byte conversion and
-negative clamp before art selection. Secondary expression state, transitions,
-relationship decorations and cache writes remain partly modeled.
+negative clamp before art selection. The delayed expression and separate
+last-expression cache follow the recovered iOS lifecycle described below;
+relationship indicators and their cache writes have their own section.
 
 Service 76 supplies a speaker string and dialogue directly, selecting mode 3
 and theme -1. It shares the name layout, no-portrait body, reveal and paging
@@ -648,10 +649,12 @@ Ordinary timing examples, relative to the new dialogue's presentation:
 | Switch from a character to narration | 0–300 ms | None | Hidden | 370 ms |
 | Next page of the same dialogue | Retained | Retained | Retained | 350 ms |
 
-The box itself is positioned/sized immediately by `FUN_000aa0a0`; the ordinary
-path does not supply a box fade or scale action. The visible entrance motion
-comes from its portrait, name and progressive text. The box and footer remain
-stationary while the background follows its independent 250 ms alignment move.
+Android positions/sizes the box immediately in `FUN_000aa0a0`; its ordinary
+path does not supply a box fade or scale action. The shared runtime originally
+followed this behavior. The owner has now selected the original **iOS box
+entrance for both games**; the common final layout remains unchanged.
+The footer stays stationary while the background follows its independent
+250 ms alignment move.
 
 **Letter cadence policy.** The native selector's 3 ms interval is not a promise
 of 333 letters/second: its body visits only one source index per update and
@@ -682,18 +685,147 @@ Clocks and counters are nonnegative integers; flags are booleans. A portrait
 mode must be 1 or 2. `revealed` cannot exceed `text_length`, and a completed
 reveal must have reached that length. `finish_step` is 0 or 1 and returns to
 0 at completion. Delays, scales and opacities are derived from these fields;
-no surfaces, fonts or wall-clock timestamps enter saves. Animation state may
-also survive an intervening VM pause, but is cleared for other presented
-screen types. Loading validates its correspondence with the pending dialogue's
-substring and current portrait. Application inactivity and the pause menu stop
-its clock.
+no surfaces, fonts or wall-clock timestamps enter saves. Animation state also
+survives intervening panels and VM pauses. Covered dialogue does not tick;
+explicit panel removal, a new scene or episode teardown disposes it. Loading
+validates its correspondence with the pending dialogue's substring and current
+portrait. Application inactivity and the pause menu stop its clock. Version 21
+adds the lifecycle fields and hidden-layer history specified below.
 
-**Remaining fidelity work.** Relationship-decoration changes can add delays
-through `FUN_0009ce2c`; the scene transition flag adds another 400 ms in
-`FUN_000aa0a0` and changes entrance scheduling. Those paths, the native global
-input-lock flags, secondary-expression changes after one second, and portrait
-reuse across other panel types remain incomplete. The modeled ordinary
-transitions are not evidence that every dialogue lifecycle path is equivalent.
+Relationship-decoration delays are implemented through the recovered
+`FUN_0009ce2c` path; see the NPC relationship section. The flag previously
+described here as a scene transition is specifically service 89's next-dialogue
+shake. Its additional 400 ms delay is now modeled. It is distinct from service
+16's whole-screen transition selector.
+
+### iOS dialogue-box entrance
+
+Read-only Ghidra inspection confirmed the same three `BubbleFrame` records
+in SHS `setupAnimationsForTextLayer` **0007df70** and CoD **00035898**.
+CoD `animateLayers` **00037a60** passes the 250 ms setup interval plus the
+portrait/status sequence duration into `animateTextLayer` **000373e0**.
+A changed speaker without the shake flag calls the bubble helper; a retained
+speaker, page turn or shake path does not.
+
+Relative to that sequence's completion, the keyframes are:
+
+| Time | Box frame |
+| --- | --- |
+| 0 ms | 1×1 at the portrait layer's position |
+| 120 ms | Final x/y and width, height 20 |
+| 320 ms | Final x/y, width and height |
+
+CoD `SHSBubbleLayer::createAnimation:::::` **00015704** lays out the box at
+each frame, collects each child's position/bounds and applies matching
+keyframe animations. **00015468** selects `kCAAnimationLinear` and
+`kCAFillModeBoth`; the original Mach-O indirect-symbol table confirms those
+constants. Corners retain their dimensions; straight edges and the center
+resize. This is not a scaled screenshot of the whole box. Ghidra's CoD ARM
+decoding and Objective-C noreturn annotations truncate some decompilations;
+the original armv6 instruction bytes and selector references were also read.
+
+The shared renderer implements these keyframes for all changed speakers. First
+and opposite-side entrances grow at 550–870 ms; same-side replacements grow
+at 850–1170 ms, before any additional relationship delay. Text/name timings
+remain as above. Page turns keep the full frame. Save version 20 adds
+`box_grow:bool`; existing `elapsed_ms` drives the animation, so drawing does
+not advance it. Older saves set `box_grow=false` for their current dialogue,
+retaining the already full-size box and all text/VM clocks.
+
+SHS `animatePortraitLayer` **0007e798** and CoD **000367b4** retain the current
+portrait layer's position when hiding it for narration or a speaker without
+art. Only the outgoing and cached layers swap; the current layer remains in
+place. A portrait-less entrance therefore starts at the last visible side's
+logical position, or `(0,0)` before any portrait was positioned. Its travel
+runs at 250–370 ms and height expansion at 370–570 ms, before relationship
+delays. `engine.dialogue_history.anchor_mode` records 0 (initial), 1 (left) or
+2 (right), using the same common layout origin as visible portraits. Closing
+the dialogue panel or loading another scene retains this global position.
+
+### Portrait housing at box completion
+
+SHS `GameModel::clipAgainstBubble` **0002367c**, `clipHousing` **000238c8** and
+`SHSPortrait::drawInContext:` **00069e9c** recover the cutout. Relative to the
+final box `(x,y,w,h)`, it is `(x-7,y-7,w+14,h+34)`, with 10-pixel bevels at
+the two top corners, converted into portrait-local coordinates. The inverse
+path clips only outer housing frame **37**. Colored frames **38/39/40** and
+the character's separate image layers remain intact.
+
+SHS `animationDidStop:finished:` **0002a7fc** and CoD **00014ca4** apply the
+cutout after successful completion of the `dialog-bubble-grow` animation.
+For a retained speaker it is immediate. New grow/shake tracks clear it first;
+cancelled tracks do not receive a successful completion and do not clip later.
+The shared renderer stores this as `housing_clipped` and preserves it on page
+turns. Authored pixel checks exercise the bevel, untouched ring and character
+on SDL, the native drawing backend and actual CoreGraphics.
+
+### Shake and reveal input
+
+SHS `GameModel::shakeDialog` **000259a8**, CoD **0000f774**, and their dialogue
+`animateLayers`/`animateTextLayer` paths implement service 89 as follows:
+
+- Hold box opacity at zero for **100 ms**, plus **600 ms** for a changed
+  speaker; then show it at full opacity.
+- From that point, scale **0.5 to 1 over 125 ms** and rotate over **250 ms**.
+  The right speaker uses **-0.25, +0.125, 0 radians** at normalized key times
+  **0, 0.75, 1**; the other side reverses the signs. Interpolation is linear.
+- Suppress ordinary box growth and add **400 ms** to the non-grow text delay.
+  Clip housing when the rotation finishes. Very short/no-art dialogue still
+  allows the entire box animation to finish after its text clock completes.
+
+The legacy `wobble_direction` values remain side markers; version-20 and older
+checkpoints retain their existing Android 70/2-or-5/70 ms rotation while that
+dialogue is active. New dialogue uses the shared iOS behavior.
+
+SHS `touchesBegan` **0007befc** and CoD **0003719c** cancel the title and bubble
+tracks when requesting an unfinished text reveal. They do **not** cancel the
+portrait entrance or delayed expression. The shared `visuals_finished` flag
+settles the box and name on that tap, while the existing common reveal gate
+holds the VM and requires a later acknowledgement. Cancelling a grow does not
+fabricate its successful clipping callback.
+
+**Correction to the previous input-lock note:** the bubble completion delegate
+does not impose a tap lock. SHS's early checks at game-model `+0x3b4` and
+`+0x1c44` refer to the script loading gate and global fade respectively.
+`SHSScript::executeWithSyscalls` **0006d728** clears the former after the loading
+timer; the shared loading screen already gates that interval. No invented
+blanket portrait/box lock was added. Whole-screen fade transitions and their
+associated input gate remain outside this dialogue implementation.
+
+### Delayed expressions and panel reuse
+
+SHS `setCurrentSpeaker` **0007c790** / CoD **00038008** enter a new speaker with
+expression **0**. An unchanged speaker starts with its separate last-expression
+byte. This cache is distinct from service 5's script-selected expression.
+SHS `tick` **0007c1d8** / CoD **00037e64** request the target expression at
+**1000 ms** of active dialogue time and update that cache. Page turns do not
+restart this clock; leaving the line early does not force the target into it.
+
+SHS `SHSPortrait::changeExpression:` **0006ad38** / CoD **00044dc8** use two
+independent fill-both opacity tracks after that request:
+
+| Layer | Delay after request | Fade |
+| --- | --- | --- |
+| New expression | 400 ms | 0 to 1 over 200 ms |
+| Old expression | 600 ms | 1 to 0 over 800 ms |
+
+Thus new art appears at dialogue time 1400–1600 ms; the old art finishes
+fading at 2400 ms. The cache changes at the request, before the visual fade.
+Outgoing portraits use the cached identity, as the native cached layer does.
+
+SHS `addUIElement` **000210a0** covers the previous panel;
+`removeUIElement` **00021fb4** exposes it again. Choices and other temporary
+panels retain dialogue speaker/expression state rather than creating a fresh
+speaker entrance on return. `clearUI` **00021c2c** and `runScript09` **00022a28**
+dispose the old scene. Both games' `loadScript09NoGUI` (SHS **00020ab0**, CoD
+**00011f2c**) clear the 200 script expression bytes and 200 last-expression
+bytes. Names, art bindings and the hidden global portrait position survive.
+
+**Verification boundary:** these recovered dialogue paths are shared by both
+games and both rendering backends. There is no separate IPA layout or Swift
+game-animation implementation. Special portrait decorations for expressions
+6–9, service-16 whole-screen transitions and original-device recordings of
+the nominal letter cadence remain outside the verified parity claim.
 
 ## Implemented text foundation and remaining UI work
 

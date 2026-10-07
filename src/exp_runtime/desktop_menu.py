@@ -16,6 +16,7 @@ from .languages import TITLE_LANGUAGES
 from .games import GAMES
 from .menu import MenuFont, MenuStrings, main_button_rects
 from .ui_assets import ImagePack, LayoutBank, Rect, read_ui
+from .updates import UPDATE_MESSAGE
 
 
 BLUE = (41, 104, 221)
@@ -193,7 +194,8 @@ class MenuRenderer:
                 self.label('Open your library' if ready else 'Import your game assets to play',
                            (25, y + 44, 270, 32), color=GRAY, center=True)
             self.label('Each game uses its own assets, episodes and saves.',
-                       (30, 386, 260, 55), color=GRAY, center=True)
+                       (30, 377, 260, 45), color=GRAY, center=True)
+            self.button('Options', (165, 436, 143, 29), ('options',))
         elif screen == 'setup':
             self.panel(app.game_title)
             self.label('Bring your game', (25, 123, 270, 30), size=20)
@@ -297,21 +299,28 @@ class MenuRenderer:
                     self.button('New Game', (83, 350, 154, 33), ('restart',))
         elif screen == 'options':
             self.panel('Options')
-            for y, label, value, setting in ((120, 'Music', app.state.music, 'music'), (164, 'Sound', app.state.sound, 'sound')):
-                self.label(label, (31, y + 5, 147, 30), size=20)
-                self.button('On' if value else 'Off', (213, y, 78, 29), ('toggle', setting))
-            if app.paused_menu:
-                self.button('Cheats', (30, 223, 260, 34), ('cheats',))
-                self.label('Runtime save slot', (31, 286, 258, 25), color=GRAY)
-                self.button('Save Progress', (30, 317, 260, 34), ('save',))
-                self.button('Load Progress', (30, 369, 260, 34), ('load',))
+            if app.state is not None:
+                for y, label, value, setting in ((120, 'Music', app.state.music, 'music'), (164, 'Sound', app.state.sound, 'sound')):
+                    self.label(label, (31, y + 5, 147, 30), size=20)
+                    self.button('On' if value else 'Off', (213, y, 78, 29), ('toggle', setting))
+            y = 208 if app.state is not None else 120
+            self.label('Update checks', (31, y + 5, 173, 30), size=16)
+            self.button('On' if app.settings.check_for_updates else 'Off', (213, y, 78, 29), ('toggle_updates',))
+            if app.state is None:
+                self.label('Check for newer releases when EXP Runtime starts. This setting applies to both games.',
+                           (31, 175, 258, 100), color=GRAY)
+            elif app.paused_menu:
+                self.button('Cheats', (30, 257, 260, 34), ('cheats',))
+                self.label('Runtime save slot', (31, 298, 258, 25), color=GRAY)
+                self.button('Save Progress', (30, 329, 260, 34), ('save',))
+                self.button('Load Progress', (30, 377, 260, 34), ('load',))
             else:
-                self.label('Episode title language', (31, 210, 258, 25))
+                self.label('Episode title language', (31, 246, 258, 25))
                 language = self.strings[118 + TITLE_LANGUAGES.index(app.state.title_language)]
-                self.button(language, (30, 239, 260, 32), ('title_languages',))
-                self.button('Add Episodes', (30, 282, 260, 32), ('browse', 'episodes'))
-                self.button('Content Library', (30, 325, 260, 32), ('library',))
-                self.button('Cheats', (30, 368, 260, 32), ('cheats',))
+                self.button(language, (30, 273, 260, 29), ('title_languages',))
+                self.button('Add Episodes', (30, 310, 260, 29), ('browse', 'episodes'))
+                self.button('Content Library', (30, 347, 260, 29), ('library',))
+                self.button('Cheats', (30, 384, 260, 29), ('cheats',))
                 self.button('Switch Game', (165, 436, 143, 29), ('switch_games',))
         elif screen == 'cheats':
             self.panel('Cheats')
@@ -389,11 +398,43 @@ class MenuRenderer:
             # Small animated progress indicator; work runs outside the UI thread.
             x = 55 + round((math.sin(pygame.time.get_ticks() / 250) + 1) * 90)
             pygame.draw.circle(self.canvas, BLUE, (x, 290), 5)
+        elif app.update_prompt is not None:
+            self.confirmation(UPDATE_MESSAGE)
         elif app.message:
             self.overlay(app.game_title, app.message)
             self.buttons = []
             self.button('OK', (121, 355, 78, 29), ('dismiss',))
         return self.canvas
+
+    def confirmation(self, message):
+        """Original two-button menu skin, with No on the left and Yes right.
+
+        SHSWidgetMenu::generateNewMenu/finalizeMenu select header 33,
+        footer 39 and orange normal/held buttons 72/73 for this menu style.
+        The new app message uses that skin without invoking a story service.
+        """
+        self.buttons = []
+        if self.library:
+            shade = pygame.Surface((320, 480), pygame.SRCALPHA).convert_alpha()
+            shade.fill((0, 0, 0, 150))
+            self.canvas.blit(shade, (0, 0))
+            pygame.draw.rect(self.canvas, (239, 239, 239), (9, 155, 302, 169))
+            self.layout(33, Rect(9, 155, 302, 56))
+            footer = Rect(9, 281, 302, 43)
+            self.layout(39, footer)
+            self.label('EXP Runtime', (24, 166, 272, 36), size=20, center=True)
+            self.label(message, (24, 219, 266, 54), size=16, color=GRAY, center=True)
+            # LayoutBank uses flattened one-based IDs: nodes 1/2 are the
+            # footer art and separator, and nodes 3/4 are its button regions.
+            for index, role, command in ((3, 26, 'update_no'), (4, 25, 'update_yes')):
+                rect = self.bank.rectangle(39, index, footer)
+                self.button(self.strings[role], (rect.x, rect.y, rect.width, rect.height),
+                            (command,), selected=True)
+        else:
+            # No game files exist yet; retain the launcher's authored fallback.
+            self.overlay('EXP Runtime', message)
+            self.button('No', (34, 355, 78, 29), ('update_no',))
+            self.button('Yes', (208, 355, 78, 29), ('update_yes',))
 
     def overlay(self, title, text):
         shade = pygame.Surface((320, 480), pygame.SRCALPHA).convert_alpha()

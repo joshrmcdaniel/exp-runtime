@@ -94,27 +94,46 @@ class DialogueRenderer:
             target.blit(pygame.transform.scale(image, size), position)
 
     @lru_cache(maxsize=32)
-    def portrait_group(self, portrait):
+    def portrait_group(self, portrait, clip=None, old=None, old_alpha=0, alpha=255):
         """The art and both rings are children of the native scaled node."""
         rings = [self.frame(126, index)
                  for index in (37, {1: 38, 2: 39}.get(portrait.theme, 40))]
-        image = self.portrait(portrait.asset_id, portrait.mode == 2 and portrait.theme != 3)
+        if clip is not None:
+            # drawInContext's even-odd path cuts only housing frame 37.
+            # Its polygon has 10px bevels at the two upper corners.
+            housing = rings[0].copy()
+            origin = housing.get_rect(center=(0, 0))
+            x, y, w, h = clip
+            x, y = x - origin.x, y - origin.y
+            pygame.draw.polygon(housing, (0, 0, 0, 0),
+                                ((x, y + h), (x, y + 10), (x + 10, y),
+                                 (x + w - 10, y), (x + w, y + 10), (x + w, y + h)))
+            rings[0] = housing
         pieces = [(ring, ring.get_rect(center=(0, 0))) for ring in rings]
-        if image is not None:
-            pieces.append((image, self.portrait_rect(image)))
+        for art, opacity in ((old, old_alpha), (portrait, alpha)):
+            if art is None or opacity <= 0:
+                continue
+            image = self.portrait(art.asset_id, art.mode == 2 and art.theme != 3)
+            if image is not None:
+                if opacity < 255:
+                    image = image.copy()
+                    image.set_alpha(opacity)
+                pieces.append((image, self.portrait_rect(image)))
         bounds = pieces[0][1].unionall([rect for _, rect in pieces[1:]])
         layer = pygame.Surface(bounds.size, pygame.SRCALPHA).convert_alpha()
         for piece, rect in pieces:
             layer.blit(piece, rect.move(-bounds.x, -bounds.y))
         return layer, bounds.topleft
 
-    def draw_portrait(self, portrait, scale):
+    def draw_portrait(self, portrait, scale, *, box=None, old=None, alphas=(0, 255)):
         if portrait is None or scale <= 0:
             return
         rect = self.resources.dialogue_layout().bank.rectangle(17, 0x30 if portrait.mode == 1 else 0x4e)
         cx, cy = rect.center
         cy -= 5  # FUN_000aaa40 uses 485-y when converting to GL.
-        layer, (x, y) = self.portrait_group(portrait)
+        clip = None if box is None else (box.x - 7 - cx, box.y - 7 - cy,
+                                         box.width + 14, box.height + 34)
+        layer, (x, y) = self.portrait_group(portrait, clip, old, *alphas)
         if scale != 1:
             size = max(1, round(layer.get_width() * scale)), max(1, round(layer.get_height() * scale))
             layer = pygame.transform.smoothscale(layer, size)
@@ -220,17 +239,23 @@ class DialogueRenderer:
         self.draw_background(self.canvas, session.engine)
         motion = session.engine.dialogue_animation
         angle = motion.box_rotation
-        if angle:
+        if angle or motion.box_scale != 1:
             from .ui_assets import Rect
             box = page.box
             layer = pygame.Surface((box.width + 20, box.height + 20), pygame.SRCALPHA).convert_alpha()
             self.box(layer, Rect(10, 10, box.width, box.height), details['theme'])
-            layer = pygame.transform.rotate(layer, -angle)
+            layer = pygame.transform.rotozoom(layer, -angle, motion.box_scale)
+            layer.set_alpha(motion.box_alpha)
             self.canvas.blit(layer, layer.get_rect(center=box.center))
         else:
-            self.box(self.canvas, page.box, details['theme'])
+            origin = page.portrait
+            if origin is None and motion.anchor_mode:
+                origin = self.resources.dialogue_layout().bank.rectangle(17, 0x30 if motion.anchor_mode == 1 else 0x4e)
+            self.box(self.canvas, motion.box_rect(page.box, origin), details['theme'], alpha=motion.box_alpha)
         self.draw_portrait(motion.previous, motion.previous_scale)
-        self.draw_portrait(motion.portrait, motion.portrait_scale)
+        self.draw_portrait(motion.portrait, motion.portrait_scale,
+                           box=page.box if motion.housing_clipped else None,
+                           old=motion.initial_portrait, alphas=motion.expression_alphas)
         self.draw_relationship(motion)
         self.draw_notice(session.engine)
         self.text.draw_layout(self.canvas, page.body_font, page.body, *page.body_origin,

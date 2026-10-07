@@ -4,6 +4,7 @@ Swift owns device services only. Imports, menus, hit testing, clocks, game
 sessions, layout and saves all run through the desktop application's code.
 """
 import json
+from concurrent.futures import Future
 from pathlib import Path
 import shutil
 import tempfile
@@ -16,7 +17,7 @@ _verifying = False
 
 
 class Host:
-    def __init__(self, directory, *, backend=None, library_root=None):
+    def __init__(self, directory, *, backend=None, library_root=None, check_updates=True):
         from .. import graphics
         if backend is None:
             import exp_platform
@@ -28,7 +29,11 @@ class Host:
         # Import after installing the backend: pygame is not bundled on iOS.
         from ..application import Application
         self.directory = Path(directory)
-        self.app = Application(file_picker=self.pick, library_root=library_root, url_opener=self.open_url)
+        self.update_future = None
+        self.update_request = None
+        settings = (Path(library_root).parent if library_root is not None else self.directory / 'EXP Runtime') / 'settings.json'
+        self.app = Application(file_picker=self.pick, library_root=library_root, url_opener=self.open_url,
+                               settings_path=settings, update_fetcher=self.fetch_release, check_updates=check_updates)
         self.encoder = FrameEncoder()
         self.picker = None
         self.url = None
@@ -42,18 +47,19 @@ class Host:
         game = self.app.game if self.app.screen == 'game' else None
         action = game.session.pending if game else None
         session = game.session if game else None
-        return (self.app.screen, id(game.session) if game else None, game.menu_open if game else False,
+        return (self.app.input_token(), id(game.session) if game else None, game.menu_open if game else False,
                 id(action), action.details.get('page_start') if action else None,
                 (session.scene, session.vm.steps_executed) if session else None)
 
     def handle_events(self, events):
         screen = self.app.screen
+        token = self.app.input_token()
         entry = self.app.game.session.pending if screen == 'game' else None
         for event in events:
             if event.get('generation', self.generation) != self.generation:
                 continue  # A touch begun on an expired timed choice cannot answer its successor.
             self._event(event)
-            if self.app.screen != screen:
+            if self.app.input_token() != token:
                 break
             if screen == 'game' and self.app.game.screen_token != self.app.game._screen_token():
                 # Keep all queued characters for this same text field. The
@@ -69,6 +75,15 @@ class Host:
 
     def open_url(self, url):
         self.url = url
+
+    def fetch_release(self):
+        # The host handles HTTPS with URLSession/system certificate trust.
+        # Shared Python still owns versions, settings and the Yes/No prompt.
+        from ..updates import RELEASE_API, REQUEST_HEADERS, TIMEOUT, MAX_RESPONSE
+        self.update_future = Future()
+        self.update_request = dict(url=RELEASE_API, headers=REQUEST_HEADERS,
+                                   timeout=TIMEOUT, max_bytes=MAX_RESPONSE)
+        return self.update_future
 
     def _event(self, event):
         b = self.backend
@@ -130,6 +145,10 @@ class Host:
                 self.staging.extend(paths)
         elif operation == 'message':
             self.app.message = message['text']
+        elif operation == 'update_result':
+            if self.update_future is not None and not self.update_future.done():
+                self.update_future.set_result(message.get('payload'))
+            self.update_future = None
         elif operation == 'active':
             self.active(bool(message['active']))
         elif operation == 'close':
@@ -168,6 +187,9 @@ class Host:
         audio, self.backend.mixer.commands = self.backend.mixer.commands, []
         picker, self.picker = self.picker, None
         url, self.url = self.url, None
+        update_request, self.update_request = self.update_request, None
+        if self.update_future is None or self.update_future.cancelled():
+            update_request = None
         game = self.app.game if self.app.screen == 'game' else None
         pending = game.session.pending if game else None
         if (operation.startswith('verify_') and verification.get('verification_check')
@@ -177,6 +199,7 @@ class Host:
                 and str(verification.get('verification_check', '')).endswith('menu click')):
             verification['verify_click_audio'] = True
         return dict(verification, status='ok', frame=frame, audio=audio, keyboard=self.backend.keyboard, picker=picker, open_url=url,
+                    update_request=update_request,
                     generation=self.generation,
                     scrollable=self.app.screen in ('episodes', 'browser') or bool(game and game.max_scroll),
                     busy=self.app.busy, screen=self.app.screen, game=self.app.selected_game,
@@ -198,5 +221,5 @@ def request(payload, directory):
             parent = Path(directory) / 'Verification'
             parent.mkdir(parents=True, exist_ok=True)
             root = Path(tempfile.mkdtemp(prefix='libraries-', dir=parent))
-        _host = Host(directory, library_root=root)
+        _host = Host(directory, library_root=root, check_updates=not _verifying)
     return json.dumps(_host.request(message), separators=(',', ':'))

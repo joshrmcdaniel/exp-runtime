@@ -539,8 +539,8 @@ class Music:
     def load(self, stream):
         self.command('load', data=base64.b64encode(stream.read()).decode('ascii'))
 
-    def play(self, *, start=0):
-        self.command('play', start=start)
+    def play(self, loops=0, *, start=0):
+        self.command('play', loops=loops, start=start)
 
     def stop(self):
         self.command('stop')

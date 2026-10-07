@@ -222,7 +222,7 @@ class ApplicationTests(unittest.TestCase):
             # Share immutable input bytes, never the user's save directory.
             for item in (source / 'content').iterdir():
                 (path / 'content' / item.name).symlink_to(item)
-        app = Application(path, audio=False)
+        app = Application(path, audio=False, check_updates=False)
         self.addCleanup(app.close)
         return app
 
@@ -396,7 +396,7 @@ class ApplicationTests(unittest.TestCase):
         app.scope = 'play'
         self.assertIn(key, [e['id'] for e in app.visible_episodes()])
         self.assertNotIn(key, app.saved)  # A save is not required for visibility.
-        reopened = Application(app.directory, audio=False)
+        reopened = Application(app.directory, audio=False, check_updates=False)
         self.addCleanup(reopened.close)
         reopened.scope = 'play'
         self.assertIn(key, [e['id'] for e in reopened.visible_episodes()])

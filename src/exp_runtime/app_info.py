@@ -2,7 +2,8 @@
 from importlib.metadata import PackageNotFoundError, version
 
 
-PROJECT_URL = 'https://github.com/joshrmcdaniel/shs-runtime'
+PROJECT_REPOSITORY = 'joshrmcdaniel/exp-runtime'
+PROJECT_URL = f'https://github.com/{PROJECT_REPOSITORY}'
 
 
 def runtime_version():

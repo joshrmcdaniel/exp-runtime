@@ -5,6 +5,8 @@ the authored kiwi logo are explicitly collected as data. User game files,
 screenshots, saves and native decompilations have no path into the executable's
 resource collection.
 """
+import ast
+from importlib.metadata import version as package_version
 from pathlib import Path
 import os
 import subprocess
@@ -38,8 +40,7 @@ def main():
         logo = root / 'src' / 'exp_runtime' / 'assets' / 'kiwi.svg'
         # pygame's hook supplies its bundled fallback font and SDL libraries.
         # Only authored runtime modules are reachable through this entry point.
-        args = [sys.executable, '-m', 'PyInstaller', '--windowed', '--onedir', '--noconfirm',
-                '--name', 'EXP Runtime', '--distpath', str(output), '--workpath', str(work),
+        args = ['--windowed', '--onedir', '--name', 'EXP Runtime',
                 '--specpath', str(stage), '--paths', str(root / 'src'), '--noupx',
                 '--add-data', str(root / 'LICENSE') + ':.',
                 '--add-data', str(logo) + ':exp_runtime/assets',
@@ -56,7 +57,25 @@ def main():
             binary, license = build()
             args += ['--add-binary', str(binary) + ':.', '--add-data', str(license) + ':.']
         env = dict(os.environ, PYINSTALLER_CONFIG_DIR=str(work / 'pyinstaller-cache'))
-        subprocess.run([*args, str(entry)], cwd=stage, env=env, check=True)
+        subprocess.run([sys.executable, '-m', 'PyInstaller.utils.cliutils.makespec', *args, str(entry)],
+                       cwd=stage, env=env, check=True)
+        spec = stage / 'EXP Runtime.spec'
+        if sys.platform == 'darwin':
+            # The CLI exposes only Windows executable version resources.
+            # Set the macOS bundle version in the generated spec, before
+            # PyInstaller creates and signs Info.plist (default: 0.0.0).
+            tree = ast.parse(spec.read_text(encoding='utf-8'))
+            bundles = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                       and isinstance(node.func, ast.Name) and node.func.id == 'BUNDLE']
+            if len(bundles) != 1:
+                raise ValueError('Expected one macOS application bundle in the generated spec')
+            bundle = bundles[0]
+            bundle.keywords = [key for key in bundle.keywords if key.arg != 'version']
+            bundle.keywords.append(ast.keyword(arg='version', value=ast.Constant(package_version('exp-runtime'))))
+            spec.write_text(ast.unparse(tree) + '\n', encoding='utf-8')
+        subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm',
+                        '--distpath', str(output), '--workpath', str(work), str(spec)],
+                       cwd=stage, env=env, check=True)
     print(f'Built desktop app in {output}')
 
 

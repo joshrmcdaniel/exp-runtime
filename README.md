@@ -97,6 +97,13 @@ score/relationship gains or correct quiz answers green, losses/wrong answers
 or no-gain alternatives red, and mixed effects amber. Unknown or later
 consequences stay unmarked. It is off by default.
 
+EXP Runtime checks GitHub for a newer release once per launch. **Options →
+Update checks** turns this off for both games; Options is also available on
+the game chooser. When “Update available. Download here.” appears, **Yes**
+opens the release page in your browser and **No** dismisses it for this launch.
+The check runs in the background and does not interrupt a story. Downloads
+and installation remain manual, including signing an iOS IPA.
+
 ZIP and RAR collections can be imported directly, including EXPs in subfolders and
 the selected game's catalog. Imported episodes remain in the app's library;
 the archive is not needed afterward. RAR imports use the OS decoder on Apple

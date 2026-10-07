@@ -196,8 +196,10 @@ class Desktop:
                 if engine.music_id >= 0 and self.music_enabled:
                     cue = music_cue(engine.music_id, game=game_id(self.session.resources))
                     pygame.mixer.music.load(BytesIO(self.session.resources.read_asset(cue.asset_id)))
-                    # Play once until native repeat/fade semantics are recovered.
-                    pygame.mixer.music.play(start=cue.start_ms / 1000)
+                    # Both native iOS games pass service 80's flag to
+                    # SHSSound.setLoop: (-1 repeats, 0 plays once).
+                    pygame.mixer.music.play(loops=-1 if engine.music_flag else 0,
+                                            start=cue.start_ms / 1000)
                     self.music_loaded = True
             except (ContentError, pygame.error) as error:
                 logging.warning('Music %s cannot be played: %s', engine.music_id, error)

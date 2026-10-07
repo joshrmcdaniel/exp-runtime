@@ -168,7 +168,7 @@ class FootballStarContentTests(unittest.TestCase):
             root = Path(tmp)
             shutil.copyfile('.shs-library/library.json', root / 'library.json')
             (root / 'content').symlink_to(Path('.shs-library/content').resolve())
-            app = Application(root, audio=False)
+            app = Application(root, audio=False, check_updates=False)
             try:
                 record = app.library.select('Football Season')
                 self.assertEqual(app.visible_episodes()[0]['id'], record['id'])
@@ -179,7 +179,7 @@ class FootballStarContentTests(unittest.TestCase):
                 app.return_to_menu()
             finally:
                 app.close()
-            reopened = Application(root, audio=False)
+            reopened = Application(root, audio=False, check_updates=False)
             try:
                 self.assertEqual(reopened.state.selected, record['id'])
                 self.assertTrue(reopened.can_resume(record['id']))

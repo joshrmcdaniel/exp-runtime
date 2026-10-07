@@ -12,6 +12,78 @@ from test_vm import program
 
 
 class DialogueTests(unittest.TestCase):
+    def test_ios_bubble_keyframes_are_shared_and_keep_text_and_layout_independent(self):
+        from exp_runtime.ui_assets import Rect
+        for game in ('shs', 'cod'):
+            session = self.session()
+            session.resources.library.game_id = game
+            motion = session.engine.dialogue_animation
+            box, portrait = Rect(20, 290, 280, 100), Rect(-4, 230, 128, 128)
+            vm = session.vm.snapshot()
+            self.assertEqual(motion.box_rect(box, portrait), Rect(60, 289, 1, 1))
+            for elapsed, expected in ((550, Rect(60, 289, 1, 1)),
+                                      (610, Rect(40, 290, 140, 10)),
+                                      (670, Rect(20, 290, 280, 20)),
+                                      (770, Rect(20, 290, 280, 60)),
+                                      (870, box)):
+                session.tick(elapsed - motion.elapsed_ms)
+                self.assertEqual(motion.box_rect(box, portrait), expected)
+                self.assertEqual(session.vm.snapshot(), vm)
+            self.assertEqual(motion.name_delay_ms, 670)
+            self.assertEqual(motion.text_delay_ms, 670)
+            # Opposite-side and same-side transitions use their existing
+            # portrait exit/entry sequencing, then the same 320ms grow.
+            for expected_delay in (550, 850):
+                answer_screen(session)
+                motion = session.engine.dialogue_animation
+                session.tick(expected_delay + 120)
+                self.assertEqual(motion.box_rect(box, portrait), Rect(20, 290, 280, 20))
+            answer_screen(session)  # Same speaker keeps the full frame.
+            self.assertFalse(session.engine.dialogue_animation.box_grow)
+            self.assertEqual(session.engine.dialogue_animation.box_rect(box, portrait), box)
+
+    def test_bubble_clock_pauses_and_restores_without_replaying_the_vm(self):
+        from exp_runtime.ui_assets import Rect
+        session = self.session()
+        session.tick(720)
+        saved = json.loads(json.dumps(session.snapshot()))
+        restored = Session.from_snapshot(session.resources, saved)
+        box, portrait = Rect(20, 290, 280, 100), Rect(-4, 230, 128, 128)
+        for ms in (0, 50, 100, 200):
+            session.tick(ms)
+            restored.tick(ms)
+            self.assertEqual(restored.snapshot(), session.snapshot())
+            self.assertEqual(restored.engine.dialogue_animation.box_rect(box, portrait),
+                             session.engine.dialogue_animation.box_rect(box, portrait))
+        # Advancing active time is the sole animation driver; drawing does
+        # not advance it, including repeated draws while paused.
+        before = restored.snapshot()
+        for _ in range(5):
+            restored.engine.dialogue_animation.box_rect(box, portrait)
+        self.assertEqual(restored.snapshot(), before)
+        restored.engine.dialogue_animation.next_page(10)
+        self.assertEqual(restored.engine.dialogue_animation.box_rect(box, portrait), box)
+
+    def test_older_saves_keep_full_box_and_new_grow_state_is_validated(self):
+        from exp_runtime.ui_assets import Rect
+        session = self.session()
+        session.tick(610)
+        old = session.snapshot()
+        old['version'] = 19
+        del old['engine']['dialogue_animation']['box_grow']
+        before = copy.deepcopy(old)
+        restored = Session.from_snapshot(session.resources, old)
+        box, portrait = Rect(20, 290, 280, 100), Rect(-4, 230, 128, 128)
+        self.assertEqual(restored.engine.dialogue_animation.box_rect(box, portrait), box)
+        self.assertEqual(restored.vm.snapshot(), session.vm.snapshot())
+        self.assertEqual(restored.engine.dialogue_animation.revealed, session.engine.dialogue_animation.revealed)
+        self.assertEqual(old, before)
+        for value in (1, 'true', None):
+            bad = session.snapshot()
+            bad['engine']['dialogue_animation']['box_grow'] = value
+            with self.assertRaises(SaveError):
+                Session.from_snapshot(session.resources, bad)
+
     def test_continue_expands_after_reveal_and_survives_save_and_page_turn(self):
         for finish in (False, True):
             with self.subTest(finish=finish):
@@ -243,7 +315,7 @@ class DialogueTests(unittest.TestCase):
         self.assertEqual(restored.vm.snapshot(), original.vm.snapshot())
         self.assertEqual(restored.pending.details['speaker'], '')
         self.assertEqual(restored.pending.details['presentation_mode'], 4)
-        self.assertEqual(restored.snapshot()['version'], 19)
+        self.assertEqual(restored.snapshot()['version'], 21)
         self.assertEqual(restored.answer().name, 'finished')
 
 

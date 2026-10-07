@@ -21,7 +21,7 @@ from .message_panel import MessagePanel
 from .speaker_names import SpeakerNames
 from .title_screen import TitleScreen
 from .relationships import RelationshipChange
-from .dialogue_animation import DialogueAnimation
+from .dialogue_animation import DialogueAnimation, DialogueHistory
 from .background import BackgroundPan
 from .dialogue_notice import notice_lifetime
 from .vm import KiwiVM, StopKind, VMError, VMStop, signed16
@@ -85,6 +85,7 @@ class EngineState:
     notice: str = ''
     notice_ms: int = 0
     dialogue_animation: DialogueAnimation | None = None
+    dialogue_history: DialogueHistory = field(default_factory=DialogueHistory)
     character_picker: CharacterPicker | None = None
     scene_badge: SceneBadge | None = None
     next_dialogue_wobble: bool = False
@@ -93,19 +94,25 @@ class EngineState:
     speaker_names: SpeakerNames = field(default_factory=SpeakerNames)
     title_screen: TitleScreen | None = None
 
+    def clear_scene_expressions(self):
+        """loadScript09NoGUI clears both 200-byte expression tables."""
+        for table in (self.character_expressions, self.dialogue_history.expressions):
+            for character in list(table):
+                if 0 <= character < 200:
+                    del table[character]
+
     def close_episode(self):
         """FUN_0007e614/0007e59c: dispose scene UI and cancel its work."""
         self.scheduled_scripts.clear()
         self.numbers.clear()  # FUN_0009623c frees the numeric key/value arrays.
         # The same reset zeros 200 expression bytes, but retains names, art,
         # replacement strings, dynamic strings, UI results and random streams.
-        for character in list(self.character_expressions):
-            if 0 <= character < 200:
-                del self.character_expressions[character]
+        self.clear_scene_expressions()
         self.panel = PanelState()
         self.background_pan.center()
         self.background_pan.automatic = True  # 0007e59c resets automatic panning.
         self.dialogue_animation = self.scene_badge = None
+        self.dialogue_history = DialogueHistory()
         self.word_game = self.word_grid = self.football = None
         self.character_picker = self.loading = self.message_panel = self.title_screen = None
         self.choice_builder = None
@@ -136,8 +143,13 @@ class EngineState:
         """Keep script prefixes separate from panel modes and explicit speakers."""
         text = '(' + raw_text + ')' if mode == -2 else '`' + raw_text + '`' if mode == -3 else raw_text
         text = self.substitute(text)
+        old = self.dialogue_animation.portrait if self.dialogue_animation else None
+        initial_expression = self.dialogue_history.expressions.get(character, 0) if (
+            old is not None and old.character_id == character) else 0
         if speaker is None:
             presentation, visible, theme = self.dialogue_presentation(character, expression)
+            if presentation in (1, 2) and self.dialogue_presentation(character, initial_expression)[0] == 3:
+                presentation, visible, theme = 3, -1, -1
             if presentation in (1, 2):
                 self.panel.speaker = self.substitute(self.character_names.get(character, ''))
         else:
@@ -160,6 +172,7 @@ class EngineState:
         relationship = self.prepare_relationship(visible if presentation in (1, 2) else -1, settled=settled_relationship)
         return dict(text=text, raw_text=raw_text, character_id=character,
                     visible_character_id=visible, speaker=speaker, expression=expression,
+                    initial_expression=initial_expression,
                     mode=mode, presentation_mode=presentation, theme=theme,
                     emphasis_theme=self.panel.emphasis_theme, box_wobble=wobble,
                     relationship=asdict(relationship) if relationship else None)

@@ -108,6 +108,7 @@ final class NativeAudio: NSObject, AVAudioPlayerDelegate {
                 }
             case "music_play":
                 guard let player = tracks[track] else { throw CanvasError(message: "Music has not been loaded") }
+                player.numberOfLoops = (command["loops"] as? NSNumber)?.intValue ?? 0
                 player.currentTime = (command["start"] as? NSNumber)?.doubleValue ?? 0
                 guard player.play() else { throw CanvasError(message: "Could not start music playback") }
                 pausedTracks.remove(track)
@@ -142,7 +143,7 @@ final class NativeAudio: NSObject, AVAudioPlayerDelegate {
     static func verify(_ encoded: String) throws {
         let audio = NativeAudio()
         defer { try? audio.perform([["kind": "music_stop"], ["kind": "menu_stop"]]) }
-        try audio.perform([["kind": "music_load", "data": encoded], ["kind": "music_play", "start": 1.0]])
+        try audio.perform([["kind": "music_load", "data": encoded], ["kind": "music_play", "start": 1.0, "loops": -1]])
         guard let story = audio.tracks["music"], story.isPlaying else { throw CanvasError(message: "Story audio did not start") }
         try audio.perform([["kind": "music_pause"]])
         let position = story.currentTime
@@ -159,8 +160,17 @@ final class NativeAudio: NSObject, AVAudioPlayerDelegate {
         // currentTime briefly includes output scheduling latency on resume.
         // Check the retained cue with tolerance, rather than exact clock equality.
         guard audio.tracks["menu"] == nil, audio.tracks["music"] === story,
-              story.isPlaying, abs(story.currentTime - position) < 0.5 else {
+              story.isPlaying, story.numberOfLoops == -1, abs(story.currentTime - position) < 0.5 else {
             throw CanvasError(message: "Story audio did not resume at its retained cue")
+        }
+        // Cross the actual end of the authored PCM in both modes. Merely
+        // checking numberOfLoops would miss playback/transport regressions.
+        for loops in [-1, 0] {
+            try audio.perform([["kind": "music_play", "start": story.duration - 0.15, "loops": loops]])
+            RunLoop.current.run(until: Date().addingTimeInterval(0.65))
+            guard story.isPlaying == (loops == -1) else {
+                throw CanvasError(message: "Music did not honor its repeat flag at the end of the track")
+            }
         }
         story.stop() // A finished stream must not restart on a focus round trip.
         try audio.perform([["kind": "music_pause"], ["kind": "music_resume"]])
@@ -277,7 +287,7 @@ final class RuntimeController: UIViewController, UIDocumentPickerDelegate {
                     do {
                         if let fixture = result["audio_test"] as? String {
                             try NativeAudio.verify(fixture)
-                            self.verificationChecks.append("Native audio playback, independent menu stream, pause and resume")
+                            self.verificationChecks.append("Native audio looping and one-shot completion, independent menu stream, pause and resume")
                         }
                         try self.audio.perform(result["audio"] as? [[String: Any]] ?? [])
                         if result["verify_menu_audio"] as? Bool == true { try self.audio.verifyMenuPlaying() }
@@ -287,6 +297,9 @@ final class RuntimeController: UIViewController, UIDocumentPickerDelegate {
                     if let picker = result["picker"] as? String { self.pick(picker) }
                     if let link = result["open_url"] as? String, let url = URL(string: link) {
                         UIApplication.shared.open(url)
+                    }
+                    if let request = result["update_request"] as? [String: Any] {
+                        self.fetchRelease(request)
                     }
                     if self.verifying && result["status"] as? String == "passed" { self.verifyPresentation(result) }
                     if self.verifying && operation["operation"] as? String != "verify" {
@@ -306,6 +319,7 @@ final class RuntimeController: UIViewController, UIDocumentPickerDelegate {
                                     : check.contains("grid tile fragments") ? "\(game)-grid-fragments"
                                     : check.contains("solid grid tile flip") ? "\(game)-grid-flip"
                                     : check.contains("word choice hints") ? "\(game)-word-held"
+                                    : check.contains("Yes/No update prompt") ? "\(game)-update"
                                     : check.contains("project link") ? "\(game)-about" : nil
                                 if let capture = capture {
                                     try? UIImage(cgImage: image).pngData()?.write(to: self.documents.appendingPathComponent("ios-content-\(capture).png"))
@@ -330,6 +344,35 @@ final class RuntimeController: UIViewController, UIDocumentPickerDelegate {
                 if !self.requests.isEmpty { self.frame() }
             }
         }
+    }
+
+    private func fetchRelease(_ parameters: [String: Any]) {
+        guard let address = parameters["url"] as? String, let url = URL(string: address),
+              url.scheme == "https", url.host == "api.github.com" else { return }
+        let timeout = Double(parameters["timeout"] as? Int ?? 8)
+        let limit = parameters["max_bytes"] as? Int ?? 1_048_576
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        configuration.urlCache = nil
+        let session = URLSession(configuration: configuration)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        for (key, value) in parameters["headers"] as? [String: String] ?? [:] {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        session.dataTask(with: request) { [weak self] data, response, error in
+            var payload: String?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200,
+               let data = data, data.count <= limit {
+                payload = String(data: data, encoding: .utf8)
+            }
+            session.finishTasksAndInvalidate()
+            let result: [String: Any] = ["operation": "update_result", "payload": payload.map { $0 as Any } ?? NSNull()]
+            DispatchQueue.main.async {
+                guard let self = self, !self.failed else { return }
+                self.requests.append(result)
+            }
+        }.resume()
     }
 
     private func showError(_ message: String, fatal: Bool) {
@@ -397,7 +440,7 @@ final class RuntimeController: UIViewController, UIDocumentPickerDelegate {
 
     private func verifyPresentation(_ core: [String: Any]) {
         verificationReport = core
-        verificationChecks = (core["checks"] as? [String] ?? []) + ["Native CoreGraphics pixels: orientation, clipping, scale, rotation, alpha, background panning"]
+        verificationChecks = (core["checks"] as? [String] ?? []) + ["Native CoreGraphics pixels: orientation, clipping, scale, rotation, alpha, background panning, dialogue-box growth, portrait housing and expression fades"]
         requests.append(["operation": "verify_start"])
     }
 }

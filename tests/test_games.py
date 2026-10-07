@@ -204,11 +204,11 @@ class GameChooserTests(unittest.TestCase):
 
     def test_asset_free_chooser_requires_the_selected_game_assets(self):
         from exp_runtime.application import Application
-        app = Application(audio=False); self.addCleanup(app.close)
+        app = Application(audio=False, check_updates=False); self.addCleanup(app.close)
         self.assertEqual(app.screen, 'games')
         app.render()
         self.assertEqual({command for _, command in app.renderer.buttons},
-                         {('choose_game', 'shs'), ('choose_game', 'cod')})
+                         {('choose_game', 'shs'), ('choose_game', 'cod'), ('options',)})
         app.choose_game('cod'); app.render()
         self.assertEqual((app.screen, app.selected_game, app.library), ('setup', 'cod', None))
         app.import_paths([self.shs])
@@ -226,7 +226,7 @@ class GameChooserTests(unittest.TestCase):
             path = self.root / key
             import_game(source, [], path)
             remember_library(path, key)
-        app = Application(audio=False); self.addCleanup(app.close)
+        app = Application(audio=False, check_updates=False); self.addCleanup(app.close)
         app.choose_game('shs'); app.start(resume=False)
         original = app.game
         original.session.engine.numbers[19] = 123
@@ -249,7 +249,7 @@ class GameChooserTests(unittest.TestCase):
         path = self.root / 'shs'
         import_game(self.shs, [], path)
         remember_library(path, 'shs')
-        app = Application(audio=False); self.addCleanup(app.close)
+        app = Application(audio=False, check_updates=False); self.addCleanup(app.close)
         app.choose_game('shs'); app.start(resume=False)
         app.switch_games()
         self.assertEqual((app.screen, app.selected_game, app.library), ('games', None, None))
@@ -269,7 +269,7 @@ class LocalCoDTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'cod'
             import_game(LOCAL_COD_IPA, [], path, game='cod')
-            app = Application(path, audio=True)
+            app = Application(path, audio=True, check_updates=False)
             try:
                 for screen in ('main', 'options', 'title_languages', 'library'):
                     app.screen = screen; app.menu_age = 4000; app.render()

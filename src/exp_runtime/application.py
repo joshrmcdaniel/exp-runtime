@@ -24,6 +24,8 @@ from .games import GAMES
 from .menu import (EPISODE_HEADER_HEIGHT, EPISODE_ROW_HEIGHT, MenuState,
                    default_library, group_episodes, remember_library)
 from .runtime import SaveError, Session
+from .settings import AppSettings
+from .updates import UpdateCheck
 from .pointer import ButtonPress
 from .vm import VMError
 
@@ -33,7 +35,8 @@ ERRORS = (ContentError, SaveError, VMError, OSError, ValueError, pygame.error)
 
 class Application:
     def __init__(self, directory=None, *, audio=True, game_key=None, file_picker=None,
-                 library_root=None, url_opener=None):
+                 library_root=None, url_opener=None, settings_path=None,
+                 update_fetcher=None, check_updates=True):
         if game_key is not None and game_key not in GAMES:
             raise ValueError(f'Unknown game: {game_key}')
         pygame.display.init()
@@ -44,6 +47,10 @@ class Application:
         self.remember_location = directory is None and library_root is None
         self.file_picker = file_picker
         self.url_opener = url_opener
+        self.settings = AppSettings(settings_path)
+        self.updates = UpdateCheck(update_fetcher)
+        self.check_updates = check_updates  # Diagnostics can remain entirely offline.
+        self.update_prompt = None
         self.library_path = (default_library if library_root is None else
                              lambda key: Path(library_root) / key)
         self.selected_game = game_key
@@ -96,6 +103,11 @@ class Application:
                 self.message = str(error)
         if self.screen == 'setup' and self.selected_game is None:
             self.selected_game = 'shs'
+        if self.check_updates and self.settings.check_for_updates:
+            self.updates.start()
+
+    def input_token(self):
+        return self.screen, self.message, self.update_prompt
 
     @property
     def game_title(self):
@@ -441,13 +453,23 @@ class Application:
         self.cancel_pointer()
         if self.busy:
             return
+        if self.update_prompt is not None and kind not in ('update_yes', 'update_no', 'back'):
+            return
         if kind == 'dismiss':
             self.message = ''
             return
         self._click_sound()
         def perform():
             if kind == 'back':
-                self.back()
+                if self.update_prompt is not None:
+                    self.dismiss_update()
+                else:
+                    self.back()
+            elif kind in ('update_yes', 'update_no'):
+                release = self.update_prompt
+                self.dismiss_update()
+                if release is not None and kind == 'update_yes':
+                    self.open_url(release.url)
             elif kind == 'choose_game':
                 self.choose_game(command[1])
             elif kind == 'switch_games':
@@ -477,12 +499,14 @@ class Application:
             elif kind == 'start':
                 self.start(resume=command[1])
             elif kind == 'project':
-                if self.url_opener is not None:
-                    self.url_opener(PROJECT_URL)
-                else:
-                    import webbrowser
-                    if not webbrowser.open(PROJECT_URL):
-                        self.message = f'Open the project at {PROJECT_URL}'
+                self.open_url(PROJECT_URL)
+            elif kind == 'toggle_updates':
+                self.settings.set_update_check(not self.settings.check_for_updates)
+                if not self.settings.check_for_updates:
+                    self.updates.cancel()
+                    self.dismiss_update()
+                elif self.check_updates:
+                    self.updates.start()
             elif kind == 'toggle':
                 key = command[1]
                 if key not in ('music', 'sound', 'choice_hints'):
@@ -544,6 +568,21 @@ class Application:
                 pygame.key.start_text_input()
         self._attempt(perform)
 
+    def open_url(self, url):
+        if self.url_opener is not None:
+            self.url_opener(url)
+        else:
+            import webbrowser
+            if not webbrowser.open(url):
+                self.message = f'Open this page in your browser: {url}'
+
+    def dismiss_update(self):
+        self.update_prompt = None
+        self.updates.dismiss()
+        self.cancel_pointer()
+        self.focus, self.focus_index = None, 0
+        self.buttons = []
+
     def tick(self, elapsed):
         if self.job and self.job.done():
             job, kind = self.job, self.job_kind
@@ -570,7 +609,17 @@ class Application:
             except ERRORS as error:
                 self.message = str(error)
         self.flush_drops()
-        if not self.active or self.busy or self.message:
+        if self.settings.check_for_updates:
+            available = self.updates.poll()
+            if (available is not None and self.update_prompt is None and self.active
+                    and not self.busy and not self.message and self.ready
+                    and self.screen in ('games', 'setup', 'main')):
+                self.update_prompt = available
+                self.cancel_pointer()
+                self.focus, self.focus_index = None, 0
+                self.buttons = []
+                pygame.key.stop_text_input()
+        if not self.active or self.busy or self.message or self.update_prompt is not None:
             return
         if self.screen == 'game':
             self.game.tick(elapsed)
@@ -589,12 +638,13 @@ class Application:
                 self.game.render()
                 return
         canvas = self.renderer.draw(self)
-        if self.transition_from is not None and self.transition_age < 200 and not self.message and not self.busy:
+        if (self.transition_from is not None and self.transition_age < 200
+                and not self.message and not self.busy and self.update_prompt is None):
             layer = canvas.copy()
             layer.set_alpha(round(255 * self.transition_age / 200))
             canvas = self.transition_from.copy()
             canvas.blit(layer, (0, 0))
-        self.buttons = self.renderer.buttons if self.ready or self.message else []
+        self.buttons = self.renderer.buttons if self.ready or self.message or self.update_prompt else []
         if self.buttons and self.focus == 'buttons':
             rect, _ = self.buttons[self.focus_index % len(self.buttons)]
             pygame.draw.rect(canvas, (255, 255, 255), rect.inflate(4, 4), 1, border_radius=4)
@@ -620,6 +670,17 @@ class Application:
             self._sync_menu_music()
         if self.screen == 'game':
             return self.game.handle_event(event)
+        if self.update_prompt is not None:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.command(('update_no',))
+                elif event.key in (pygame.K_TAB, pygame.K_UP, pygame.K_DOWN):
+                    self.focus, self.focus_index = 'buttons', 1 - self.focus_index % 2
+                elif event.key in (pygame.K_RETURN, pygame.K_SPACE) and self.buttons:
+                    self.command(self.buttons[self.focus_index % len(self.buttons)][1])
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                self._pointer_event(event)
+            return True
         if event.type == pygame.DROPBEGIN:
             self.dropping = True
         if event.type == pygame.DROPFILE:
@@ -685,11 +746,12 @@ class Application:
                if self.viewport.collidepoint(event.pos) else None)
         phase = {pygame.MOUSEBUTTONDOWN: 'down', pygame.MOUSEBUTTONUP: 'up',
                  pygame.MOUSEMOTION: 'move'}[event.type]
-        command = self.press.update(phase, hit, (self.screen, self.message))
+        command = self.press.update(phase, hit, self.input_token())
         if command is not None:
             self.command(command)
 
     def close(self):
+        self.updates.cancel()
         # Worker must finish its atomic publication before its ZIP is closed.
         self.executor.shutdown(wait=True)
         if self.game and self.screen == 'game':
@@ -708,11 +770,11 @@ class Application:
             while running:
                 elapsed = clock.tick(60)
                 self.render()
-                screen = self.screen
+                token = self.input_token()
                 for event in pygame.event.get():
                     running = self.handle_event(event)
                     # Do not deliver a queued click to a newly opened screen.
-                    if not running or self.screen != screen:
+                    if not running or self.input_token() != token:
                         break
                     if self.screen == 'game' and self.game.screen_token != self.game._screen_token():
                         break
@@ -737,7 +799,7 @@ def main(argv=None):
             raise RuntimeError('Packaged runtime version is missing')
         # A packaged-build check must never open or alter the player's library.
         with tempfile.TemporaryDirectory(prefix='exp-setup-test-') as temporary:
-            app = Application(audio=False)
+            app = Application(audio=False, check_updates=False)
             try:
                 if app.screen != 'games' or app.library is not None:
                     raise RuntimeError('Expected game chooser without game content')

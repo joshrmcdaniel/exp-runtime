@@ -106,7 +106,7 @@ class NamedDialogueTests(unittest.TestCase):
         self.assertEqual((motion.previous.character_id, motion.previous.mode), (1, 2))
         self.assertIsNone(motion.portrait)
         self.assertIsNone(motion.relationship)
-        self.assertEqual((motion.name_delay_ms, motion.text_delay_ms), (370, 250))
+        self.assertEqual((motion.name_delay_ms, motion.text_delay_ms), (370, 650))
         self.assertEqual(motion.wobble_direction, -20)
         self.assertFalse(s.engine.next_dialogue_wobble)
         s.tick(150)
@@ -181,17 +181,22 @@ class NamedDialogueTests(unittest.TestCase):
 
         with patch.object(original.engine, 'dispatch', side_effect=old_dispatch):
             answer_screen(original)
-        self.assertIsNone(original.engine.dialogue_animation)
-        saved = json.loads(json.dumps(original.snapshot()))
-        untouched = copy.deepcopy(saved)
-        restored = Session.from_snapshot(original.resources, saved)
-        self.assertEqual(saved, untouched)
-        self.assertEqual(restored.vm.snapshot(), original.vm.snapshot())
         fresh = sequence()
         answer_screen(fresh)
-        self.assertEqual(restored.snapshot(), fresh.snapshot())
-        self.assertEqual(Session.from_snapshot(original.resources, restored.snapshot()).snapshot(),
-                         restored.snapshot())
+        self.assertIsNotNone(original.engine.dialogue_animation)
+        for legacy in (False, True):
+            saved = json.loads(json.dumps(original.snapshot()))
+            if legacy:
+                saved['version'] = 20
+                saved['engine']['dialogue_animation'] = None  # Old unsupported stops discarded it.
+                del saved['engine']['dialogue_history']
+            untouched = copy.deepcopy(saved)
+            restored = Session.from_snapshot(original.resources, saved)
+            self.assertEqual(saved, untouched)
+            self.assertEqual(restored.vm.snapshot(), original.vm.snapshot())
+            self.assertEqual(restored.snapshot(), fresh.snapshot())
+            self.assertEqual(Session.from_snapshot(original.resources, restored.snapshot()).snapshot(),
+                             restored.snapshot())
 
     def test_bad_frames_inputs_and_mismatched_saved_text_stay_explicit_errors(self):
         for args in ((), (-1,), (-2, -1)):

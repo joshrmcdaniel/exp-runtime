@@ -46,16 +46,64 @@ class MusicPlaybackTests(unittest.TestCase):
                     app._click_sound()
                     self.assertEqual(sound.return_value.play.call_count, 2)
 
-    def make_ui(self, service=80, music=8202):
+    def make_ui(self, service=80, music=8202, repeat=0, game='shs'):
         from exp_runtime.desktop import Desktop
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
         import pygame
         self.addCleanup(pygame.quit)
-        r = Resources(program(*host_call(service, *([music] if service == 79 else [music, 0])), 0x33))
+        r = Resources(program(*host_call(service, *([music] if service == 79 else [music, repeat])), 0x33))
+        r.library.game_id = game
         r.read_asset = Mock(return_value=b'authored music bytes')
         ui = Desktop(Session(r), audio=False)
         ui.audio = True
         return ui, r
+
+    def test_script_repeat_flag_keeps_real_music_playing_past_the_end(self):
+        import pygame
+        sample = BytesIO()
+        with wave.open(sample, 'wb') as stream:
+            stream.setnchannels(1)
+            stream.setsampwidth(2)
+            stream.setframerate(8000)
+            stream.writeframes(b'\0\0' * 960)  # 120ms, wholly authored.
+        for game in ('shs', 'cod'):
+            for service, flag in ((79, 0), (80, 0), (80, 1), (80, -3)):
+                with self.subTest(game=game, service=service, flag=flag):
+                    ui, resources = self.make_ui(service, 8201, flag, game)
+                    resources.read_asset.return_value = sample.getvalue()
+                    saved = ui.session.snapshot()
+                    ui.session = Session.from_snapshot(resources, saved)
+                    pygame.mixer.init(frequency=8000, size=-16, channels=1, buffer=128)
+                    ui._sync_audio()
+                    pygame.time.wait(400)
+                    self.assertEqual(pygame.mixer.music.get_busy(), bool(flag))
+                    ui.menu_open = True
+                    ui._sync_audio()
+                    self.assertFalse(pygame.mixer.music.get_busy())
+                    ui.menu_open = False
+                    ui._sync_audio()
+                    self.assertEqual(pygame.mixer.music.get_busy(), bool(flag))
+                    self.assertEqual(ui.session.snapshot(), saved)
+                    ui.session.engine.music_id = -1
+                    ui._sync_audio()
+                    self.assertFalse(pygame.mixer.music.get_busy())
+                    pygame.mixer.quit()
+
+    def test_script_repeat_flag_reaches_native_music_commands(self):
+        from exp_runtime.platforms.drawing import Mixer
+        for flag in (0, 1):
+            ui, _ = self.make_ui(music=26001, repeat=flag, game='cod')
+            mixer = Mixer()
+            with patch('pygame.mixer.music', mixer.music):
+                ui._sync_audio()
+                ui._sync_audio()
+                ui.menu_open = True
+                ui._sync_audio()
+                ui.menu_open = False
+                ui._sync_audio()
+            self.assertEqual([c['kind'] for c in mixer.commands],
+                             ['music_stop', 'music_load', 'music_play', 'music_pause', 'music_resume'])
+            self.assertEqual(mixer.commands[2], dict(kind='music_play', start=0., loops=-1 if flag else 0))
 
     def test_both_music_services_load_and_seek_without_changing_vm_or_save_ids(self):
         # Expected destinations and offsets recovered from the Java player,
@@ -77,7 +125,7 @@ class MusicPlaybackTests(unittest.TestCase):
                         music.stop.assert_called_once_with()
                         music.load.assert_called_once()
                         self.assertEqual(music.load.call_args.args[0].getvalue(), b'authored music bytes')
-                        music.play.assert_called_once_with(start=seconds)
+                        music.play.assert_called_once_with(loops=0, start=seconds)
                         r.read_asset.assert_called_once_with(source)
                         self.assertEqual(ui.session.snapshot(), saved)
                         self.assertEqual(ui.session.engine.music_id, requested)
@@ -99,7 +147,7 @@ class MusicPlaybackTests(unittest.TestCase):
             self.assertEqual(music.stop.call_count, 3)
             ui.music_enabled = True
             ui._sync_audio()
-            self.assertEqual(music.play.call_args.kwargs, {'start': 39.2})
+            self.assertEqual(music.play.call_args.kwargs, {'loops': 0, 'start': 39.2})
             self.assertEqual(ui.session.snapshot(), saved)
 
     def test_pause_menu_resumes_the_same_stream_without_reloading_or_replaying_vm(self):
@@ -126,7 +174,7 @@ class MusicPlaybackTests(unittest.TestCase):
                     ui._sync_audio()
                     music.unpause.assert_called_once_with()
                     music.load.assert_called_once()
-                    music.play.assert_called_once_with(start=2.8)
+                    music.play.assert_called_once_with(loops=0, start=2.8)
                     resources.read_asset.assert_called_once_with(8201)
                     self.assertEqual(ui.session.snapshot(), saved)
 
@@ -171,7 +219,7 @@ class MusicPlaybackTests(unittest.TestCase):
                         self.assertEqual(music.pause.call_count, 2)
                         music.unpause.assert_called_once_with()
                     else:
-                        music.play.assert_called_once_with(start=4.)
+                        music.play.assert_called_once_with(loops=0, start=4.)
                         music.unpause.assert_not_called()
 
     def test_live_main_menu_resume_keeps_the_stream_and_restart_loads_a_new_one(self):
@@ -203,7 +251,7 @@ class MusicPlaybackTests(unittest.TestCase):
             self.assertIs(app.game, ui)
             music.unpause.assert_called_once_with()
             music.load.assert_called_once()
-            music.play.assert_called_once_with(start=2.8)
+            music.play.assert_called_once_with(loops=0, start=2.8)
             self.assertEqual(ui.session.snapshot(), saved)
             app.return_to_menu()
             app.state.session.return_value = Session(resources)
@@ -217,7 +265,7 @@ class MusicPlaybackTests(unittest.TestCase):
         from exp_runtime.application import Application
         for game, resource in (('shs', 8215), ('cod', 8209)):
             with self.subTest(game=game):
-                app = Application(audio=False, game_key=game, directory=Path('/no-authored-library'))
+                app = Application(audio=False, game_key=game, directory=Path('/no-authored-library'), check_updates=False)
                 self.addCleanup(app.close)
                 import pygame
                 pygame.mixer.init()

@@ -30,7 +30,7 @@ yield IDs and must never be fed into the engine-service dispatcher.
 | 10004 | NowAiring | 127 | Locally imported episode list |
 | 10003 | OnDemand | 91 | All local episodes |
 | 10005 | MoreGames | 252 or 253, depending on ad state | Switch Game; checkpoint progress and open the other installed game, or the chooser if absent |
-| 1006 | Options | Gear artwork | Music/Sound, episode title language and library controls |
+| 1006 | Options | Gear artwork | Music/Sound, update checks, episode title language and library controls |
 | 10007 | Help/About | Info artwork | Player controls, runtime version and GitHub project link |
 | 10008 | DisableAds | 300 | Omitted; no advertising or purchase system |
 
@@ -53,6 +53,49 @@ from Music. It never substitutes the other game's identically numbered asset.
 Native network listings refer to server-provided episode/ad configuration.
 The desktop lists the user's own EXP files instead; it neither contacts those
 servers nor pretends that a local episode is the latest weekly release.
+
+### Runtime update check
+
+On each application launch, the shared application checks the project's
+[latest public release](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)
+on GitHub. This is a runtime feature, separate from the original games'
+episode servers. It fetches release metadata without authentication or any
+game files, saves or player identifiers in the request. Numeric version
+comparison ignores older, equal, draft, prerelease and malformed releases.
+Unknown development versions skip the check. Network failures and rate limits
+do not show an error or delay startup/shutdown.
+
+**Options → Update checks** defaults to On. It is accessible from the game
+chooser even before importing assets and persists in the app's `settings.json`,
+outside either game's library. Turning it off prevents checks on later launches
+and ignores an already pending response. Re-enabling it starts a check if none
+has run during this launch; switching games or returning from the background
+does not repeat it. Automated verification and smoke tests disable live checks.
+
+A newer release shows **Update available. Download here.** at the chooser,
+import setup or main menu. A result arriving during play, an import, a transition
+or another alert waits until a menu is ready. **No** dismisses the offer for this
+launch; **Yes** opens that release's page on the configured project in the system
+browser. Nothing is downloaded or installed by the runtime. Keyboard Escape and
+the initial Enter selection mean No. Pointer presses cannot pass through the
+modal or carry over from a covered button.
+
+With game assets loaded, the prompt uses the original two-button menu skin:
+header 33, footer 39 and orange normal/held button layouts 72/73. SHS iOS
+`SHSWidgetMenu::generateNewMenu` (`000a2f80`) and `finalizeMenu` (`000a4b84`)
+confirm those widgets; the footer's flattened nodes 3/4 place the left/right
+buttons (nodes 1/2 draw its background and separator). Yes/No labels come
+from each game's string bank (SHS 25/26, CoD 24/25). This new message's title,
+height and placement are a runtime adaptation, not a reconstructed original
+update service. Before loading game assets, the launcher's authored fallback
+provides the same Yes/No actions.
+
+Desktop HTTPS runs in a daemon worker with verified system certificate trust;
+iOS uses an ephemeral `URLSession` and sends the result to shared Python. The
+version check, preference, message, rendering and input rules remain shared.
+Requests use an eight-second timeout and responses over 1 MiB are ignored.
+The browser destination is constructed from the project and validated release
+tag, rather than an arbitrary URL or message in downloaded metadata.
 
 ## 2. Artwork and layout
 
@@ -360,7 +403,7 @@ followed by release dispatch. Normal alternating RGBA colors are
 Shared menu buttons use their supplied pressed artwork. Dragging off, scrolling,
 losing focus, replacing a panel or redealing a timed quiz cancels the old press.
 
-**Options → Cheats → Choice hints**, added in v0.4.0 (unreleased), is an
+**Options → Cheats → Choice hints**, added in v0.4.0, is an
 authored, opt-in per-game preference, off by default. Green marks recognized
 gains/correct answers, red recognized losses/wrong answers or a
 no-gain alternative when another option has a known gain, amber mixed effects.

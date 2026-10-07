@@ -226,7 +226,7 @@ class EpisodeExitMenuTests(unittest.TestCase):
     def make_app(self):
         from exp_runtime.application import Application
         os.environ['SDL_VIDEODRIVER'] = os.environ['SDL_AUDIODRIVER'] = 'dummy'
-        app = Application(self.root / 'empty', audio=False)
+        app = Application(self.root / 'empty', audio=False, check_updates=False)
         self.addCleanup(app.close)
         # The lifecycle needs no original menu art. Use the setup renderer's
         # canvas with the authored content library and real Desktop/Session.

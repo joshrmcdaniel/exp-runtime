@@ -348,14 +348,14 @@ while data and PC/SP/FP reset according to the core VM contract.
 <a id="runtime-save-schema-version-17"></a>
 <a id="runtime-save-schema-version-18"></a>
 
-## Runtime save schema, version 19
+## Runtime save schema, version 21
 
 This is a new format for the reimplementation. No pickle, object deserialization,
 or original executable code is used. JSON fields are:
 
 | Field | Contract |
 | --- | --- |
-| `format`, `version` | `"exp-runtime-save"`, `19` |
+| `format`, `version` | `"exp-runtime-save"`, `21` |
 | `content` | `profile`, `apk_sha256`, `episode_sha256`; must exactly match loaded content |
 | `scene` | Unsigned current script resource ID |
 | `script_sha256` | Hash of the losslessly encoded current program |
@@ -405,6 +405,31 @@ automatic alignment enabled, without replaying dialogue or altering VM state.
 Old SHS/CoD stops at service 97 resume only that retained call and continuation.
 See [background panning](UI_FIDELITY.md#background-panning). Older runtime builds
 cannot read version-19 saves.
+
+Version 20 adds `dialogue_animation.box_grow:bool`. The existing elapsed
+clock also drives the native iOS bubble entrance now shared by both games.
+Versions 1–19 retain a full-size box for the saved dialogue without changing
+its revealed text, portrait/name clocks, pending call or VM. The next new
+portrait-speaker entrance uses the recovered 120+200 ms animation. Older
+runtime builds cannot read version-20 saves.
+
+Version 21 adds `engine.dialogue_history`, containing the hidden portrait's
+`anchor_mode` (0/1/2) and a character-ID map of signed last-expression bytes.
+Dialogue details also retain `initial_expression`. The animation adds
+`native_lifecycle:bool`, `anchor_mode:int`, nullable `initial_portrait`, integer
+`initial_expression`/`expression`, `presentation_ms:int[0..2400]`, and booleans
+`visuals_finished`/`housing_clipped`. The presentation clock is independent of
+page-local text timing. It controls the one-second expression update and both
+art fades; the existing elapsed clock drives bubble and shake completion.
+
+Covered dialogue remains saved while a choice or other temporary panel is
+active, without ticking. Explicit panel removal and scene teardown clear the
+animation. A new scene clears both expression tables for IDs 0–199 while
+retaining the global portrait anchor. Loading validates typed fields, portrait
+identity, expression cache, text and progress without executing VM callbacks.
+Versions 1–20 remain readable: their current expression stays visible, their
+old shake/box timing continues, and no new fade or clipping is replayed. The
+next dialogue uses the new lifecycle. Older runtimes cannot read version 21.
 
 The `vm` object contains `pc`, `sp`, `fp`, `a`, `b`, `result`, `data`, `stack`,
 `pending`, `steps_executed`, `opcode_counts`, and `recent_pcs`.
@@ -734,8 +759,10 @@ gains/losses and dialogue delays. Name layout includes the native exceptions
 and persistent font inputs, with a documented glyph-bounds correction for
 remaining overlaps. Cross-object kerning, other widgets' shared font effects,
 scene transitions and native global input locks remain incomplete; see
-[UI_FIDELITY.md](UI_FIDELITY.md). Native panel lifecycle and Android promotional
-branches, music repeat/fades, and all channel behavior are not fully reproduced.
+[UI_FIDELITY.md](UI_FIDELITY.md). Dialogue now retains hidden portrait position,
+speaker reuse, box-completion clipping and delayed expression fades across
+temporary panels. Other panel-lifecycle exceptions, Android promotional
+branches, audio fades and all channel behavior are not fully reproduced.
 Name entry accepts up to 16 ASCII alphanumeric characters, with the recovered
 pre-append bitmap-width gate and interactive case conversion. See
 [NAME_INPUT.md](NAME_INPUT.md) for keyboard controls and remaining fidelity

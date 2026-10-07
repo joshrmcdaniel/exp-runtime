@@ -49,10 +49,10 @@ The release body comes from [RELEASE.md](../RELEASE.md) at the repository root.
 Update it before tagging a version. [CHANGELOG.md](../CHANGELOG.md) records
 release history, with upcoming changes under **Unreleased**.
 
-The current release notes describe **v0.4.0** and contain changes
-after the v0.3.0 tag. The iOS app/unsigned IPA artifacts, ZIP/RAR episode
-imports and subsequent shared UI/hint improvements belong to v0.4.0.
-Earlier SHS/CoD IPA asset import remains in its original release history.
+The prepared release notes describe **v0.4.2**: optional launch-time update
+checks, script-controlled music looping, recovered dialogue animations and
+lifecycle, and a separate iOS simulator installation timeout. Earlier releases
+remain documented in the changelog.
 
 Rerunning a version-tag workflow updates matching assets on an existing
 release using `gh release upload --clobber`, then publishes any draft left by

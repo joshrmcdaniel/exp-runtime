@@ -161,7 +161,7 @@ def drawing_fixture():
     """Asymmetric authored pixels catch flipped images, crop and alpha errors."""
     from PIL import Image
     from exp_runtime.platforms.drawing import Draw, FrameEncoder, Surface, Transform, raster, SRCALPHA
-    target = Surface((320, 112))
+    target = Surface((320, 276))
     target.fill((10, 20, 30))
     tile = Surface.from_pixels(Image.new('RGBA', (4, 6), (240, 10, 20, 255)))
     tile.fill((10, 230, 20), (0, 0, 4, 2))
@@ -208,6 +208,39 @@ def drawing_fixture():
         y = 38 + row * 14
         target.blit(scene, (0, y), (0, 150, 320, 12))
         points.extend((x, y + 5) for x in (0, 79, 80, 159, 160, 239, 240, 319))
+    # The production nine-piece box at native entrance keyframes. Borders
+    # stay fixed-size while the center and straight edges expand.
+    from exp_runtime.dialogue_animation import DialogueAnimation, DialoguePortrait
+    from exp_runtime.ui_assets import Rect
+    center, edge = Surface((2, 2)), Surface((4, 4))
+    center.fill((230, 220, 180)); edge.fill((80, 110, 200))
+    art.frame = lambda asset, index: center if asset == 126 else edge
+    motion = DialogueAnimation(20, portrait=DialoguePortrait(1, 100, 1, 1), box_grow=True)
+    for column, elapsed in enumerate((550, 610, 670, 770, 870)):
+        motion.tick(elapsed - motion.elapsed_ms)
+        scene = Surface((64, 100))
+        scene.fill((10, 20, 30))
+        box = motion.box_rect(Rect(10, 20, 44, 70), Rect(20, 0, 20, 20))
+        art.box(scene, box, 1)
+        target.blit(scene, (column * 64, 112))
+        points.extend((column * 64 + x, 112 + y) for x in (7, 11, 29, 40, 55)
+                      for y in (4, 15, 21, 39, 65, 89, 93))
+    # Native housing cutout and expression layers: clipping may erase only
+    # frame 37, and transparent fades must preserve the ring and old art.
+    housing, ring = Surface((60, 60), SRCALPHA), Surface((30, 30), SRCALPHA)
+    housing.fill((200, 0, 0)); ring.fill((0, 200, 0))
+    old, new = Surface((10, 30), SRCALPHA), Surface((10, 30), SRCALPHA)
+    old.fill((0, 0, 200)); new.fill((200, 200, 0))
+    new.fill((0, 0, 0, 0), (0, 0, 5, 30))
+    art.frame = lambda _, index: housing if index == 37 else ring
+    art.portrait = lambda asset, _: old if asset == 100 else new
+    portrait, initial = DialoguePortrait(0, 101, 1, 1), DialoguePortrait(0, 100, 1, 1)
+    motion = DialogueAnimation(20, portrait=portrait, initial_portrait=initial)
+    for column, elapsed in enumerate((1000, 1500, 1600, 2000, 2400)):
+        motion.tick(elapsed - motion.presentation_ms)
+        layer, _ = art.portrait_group(portrait, (-30, 0, 60, 35), initial, *motion.expression_alphas)
+        target.blit(layer, (column * 64, 214))
+        points.extend((column * 64 + x, 214 + y) for x, y in ((1, 31), (1, 42), (20, 42), (27, 42), (30, 42)))
     expected = raster(target.snapshot())
     return dict(frame=FrameEncoder().encode(target), samples=[dict(at=p, rgba=expected.getpixel(p)) for p in points])
 
@@ -274,6 +307,31 @@ def presentation_steps(host):
                         dict(kind='up', point=(200, 300), generation=-1)])
     assert app.screen == 'games', 'A stale gesture answered a different screen'
     yield 'Shared game chooser and native default font'
+    from concurrent.futures import Future
+    from exp_runtime.settings import AppSettings
+    from exp_runtime.updates import UpdateCheck
+    def offer_update():
+        future = Future()
+        future.set_result(json.dumps(dict(tag_name='v999.0.0', draft=False, prerelease=False)))
+        app.updates = UpdateCheck(lambda: future)
+        app.updates.start()
+        app.tick(0)
+        app.render()
+        assert app.update_prompt is not None
+        assert [command for _, command in app.buttons] == [('update_no',), ('update_yes',)]
+    app.command(('options',)); app.tick(200); app.render()
+    assert ('toggle_updates',) in [command for _, command in app.buttons]
+    app.command(('toggle_updates',))
+    assert not AppSettings(app.settings.path).check_for_updates
+    app.command(('toggle_updates',))
+    assert AppSettings(app.settings.path).check_for_updates
+    app.command(('back',)); app.tick(200)
+    offer_update()
+    app.command(('update_no',))
+    app.tick(20)
+    assert app.update_prompt is None and host.url is None
+    app.render()
+    yield 'Shared launch update prompt, persistent opt-out and No dismissal (authored metadata, offline)'
     # Input uses the real shared hit regions, not a test-only game-selection API.
     for key in ('shs', 'cod'):
         rect = next(rect for rect, command in app.buttons if command == ('choose_game', key))
@@ -315,6 +373,23 @@ def presentation_steps(host):
             app.tick(3000)
             yield f"{item['game']}: {app.library.kind.upper()} import and shared main menu"
             assert ('switch_games',) in [command for _, command in app.buttons], 'Main menu has no Switch Game action'
+            offer_update()
+            no_rect, yes_rect = (next(rect for rect, command in app.buttons if command == (kind,))
+                                 for kind in ('update_no', 'update_yes'))
+            assert tuple(no_rect) == (34, 288, 78, 29), 'No must use the left footer button region'
+            assert tuple(yes_rect) == (208, 288, 78, 29), 'Yes must use the right footer button region'
+            rect = next(rect for rect, command in app.buttons if command == ('update_yes',))
+            point = [int(v * 1.5) for v in rect.center]
+            normal = raster(app.renderer.canvas.snapshot()).tobytes()
+            host._event(dict(kind='down', point=point)); app.render()
+            assert app.pressed == ('update_yes',)
+            assert raster(app.renderer.canvas.snapshot()).tobytes() != normal
+            yield f"{item['game']}: native Yes/No update prompt and held button"
+            host._event(dict(kind='up', point=point))
+            assert host.url == PROJECT_URL + '/releases/tag/v999.0.0'
+            host.url = None  # Verify handoff without opening a fictitious release.
+            assert app.update_prompt is None and app.screen == 'main'
+            yield f"{item['game']}: update acceptance opens only the release page"
             app.command(('help',))
             app.tick(200)  # Finish the native input-gated menu transition.
             app.render()

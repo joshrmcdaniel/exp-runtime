@@ -87,6 +87,14 @@ Files. Multiple selection lets SHS users choose an IPA and its optional APK
 asset supplement together. IPA assets take precedence. Each game keeps a
 separate content library and progress.
 
+**Options → Update checks** controls the automatic GitHub release check at
+launch. It defaults to On and is shared by both games, including the chooser's
+Options screen. A newer release shows “Update available. Download here.” with
+Yes/No controls. Yes opens its release page in the browser; signing and
+installation remain manual. The check runs asynchronously through iOS
+`URLSession`; shared Python handles versions, settings and the prompt. Offline
+launches continue normally, and prompts wait until a menu if a story is active.
+
 File selection accepts the broad `UTType.item` type, including opaque files
 whose provider has not yet identified an IPA/EXP/ZIP/RAR. The shared importer
 validates extensions and archive contents after selection. Open Library still
@@ -125,6 +133,11 @@ Both games play their supplied main-menu theme. Menu and story music have
 independent native players, so returning to the menu preserves the paused
 story stream. Music settings and background pauses apply to both. Native
 prepare/start/resume failures are reported instead of silently ignored.
+Story music honors service 80's repeat flag; one-shot cues remain one-shot,
+including CoD's native main-menu theme. Both audio backends use this policy.
+Portrait-speaker dialogue boxes use the original iOS 120+200 ms entrance
+in shared Python, with fixed-size borders and saved active-time progress.
+See [animation parity limits](UI_FIDELITY.md#ios-dialogue-box-entrance).
 Dialogue shows each game's original Continue tab after text finishes; the
 shared 250 ms visual clock pauses and saves with the story. The bottom footer
 also shows the original continuation instruction. Glyph rounding keeps one
@@ -156,6 +169,8 @@ UUID change does not invalidate them. Serialized iOS paths use forward slashes
 on every host, including Windows tests. IPA font lookup uses the original bundled
 font when present, then the named iOS system face, then the system default.
 Android bitmap fonts retain their existing layout path.
+The global update preference lives in `settings.json` alongside the libraries
+and survives ordinary app relaunches and game switches.
 
 ## Verification
 
@@ -208,6 +223,8 @@ The authored checks require no original content and cover:
   players, pause and resume. Optional original imports also assert that the
   supplied main-menu MP3, pause-opening sound and menu clicks are playing.
 - Embedded runtime version metadata and the Help/About project-link handoff.
+- Offline update fixtures, saved opt-out and Yes/No prompt actions. Verification
+  never makes a live release request or opens the release page.
 
 Optional local checks import supplied originals into that disposable simulator,
 play the opening story through the shared renderer, and exercise pauses,
@@ -220,6 +237,8 @@ sounds and held/canceled rows in both games, quiz hint colors, choice release,
 solid tile flips, fragments and in-flight grid restoration. Football Star's
 opening scene also verifies the badge text inside its native region; its
 original classroom quiz checks answer colors without advancing the live quiz.
+Both games also render the update prompt using their original menu skin, verify
+the held Yes button, and check the browser handoff without opening Safari.
 
 ```sh
 uv run --locked --extra desktop python tools/test_ios.py \

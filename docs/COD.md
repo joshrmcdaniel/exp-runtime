@@ -167,6 +167,21 @@ SHS's 8202→8201 and other segment aliases do not apply. Service 81's argument
 is a fade duration (`stopMusic`, `00042d70`), not a track selector. The current
 desktop stops immediately, as in the existing SHS audio approximation.
 
+Service 80's second argument is the **repeat flag**, not a fade control.
+The dispatcher (`0003354c`) passes `bool(a2)` to `queueMusic` (`0000ebe2`),
+then `handleQueuedAudio` (`00011c0c`) forwards it to `playMusic` (`0004313c`).
+The sound manager's `tick` (`00042ffc`) applies `setLoop:` before playback;
+`SHSSound::setLoop:` (`00041e88`) sets AVAudioPlayer's loop count to -1 or 0.
+Both runtime audio backends now honor this flag. Service 79 queues music
+with `false`. Menu track 8209 is also explicitly one-shot in
+`splashScreenFlewIn:` (`00014c0c`) and `doSoundManagerTransition`
+(`00022b04`); it is not evidence that story tracks should stop after one pass.
+SHS iOS `SHSSound::setLoop:` (`00073fa8`) uses the same repeat convention.
+
+The shared dialogue renderer now adopts the iOS bubble-opening animation
+for portrait-speaker entrances in both games, at the owner's request.
+See [animation evidence and limits](UI_FIDELITY.md#ios-dialogue-box-entrance).
+
 CoD menu clicks use **8005** (`0x1f45`), recovered through read-only Ghidra
 inspection of `SHSEngine::buttonPressed` (`000249d0`) and
 `SHSWidgetMenu::buttonPressed` (`0003fd60`). These pass `false, -1` to

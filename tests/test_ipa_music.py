@@ -242,7 +242,7 @@ class LocalIPAMusicTests(unittest.TestCase):
             source = android.directory / android.manifest['apk']['file']
             with tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / 'library'; import_game(LOCAL_IPA, [], path)
-                app = Application(path, audio=True)
+                app = Application(path, audio=True, check_updates=False)
                 try:
                     app.selected = app.library.select('The_New_Girl.exp')['id']
                     app.start()

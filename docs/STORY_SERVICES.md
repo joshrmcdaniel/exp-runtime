@@ -646,12 +646,21 @@ state intact. These placements are checked against the binary and supplied
 assets; comparison with frames from a running original remains outstanding.
 
 Service 89 sets scene byte +0x3f8 for the **next dialogue**, then completes with
-zero. `FUN_000aaa40` consumes and clears it; `FUN_0007c9e8` rotates the dialogue
+zero. In Android, `FUN_000aaa40` consumes and clears it; `FUN_0007c9e8` rotates the dialogue
 box independently of its text and portrait. Mode 2 starts at +20 degrees,
 rotates to -20 in 70 ms, waits 2 ms, then returns to zero over 70 ms. Other
 modes invert the direction and wait 5 ms. The changed-character text path
 also omits its usual additional 120 ms delay. Page turns do not replay the
 one-shot wobble.
+
+New dialogue uses the owner-selected iOS presentation for both games: a
+100 ms hidden hold (700 ms for a changed speaker), then a 125 ms scale from
+0.5 to 1 and a 250 ms three-keyframe rotation. Text receives an additional
+400 ms delay. Housing clipping follows successful shake completion; early
+reveal cancels the box track. The existing -20/20 state values select the side,
+not the iOS angle. Version-20 and older checkpoints keep their active Android
+rotation until the next dialogue. See the recovered paths and exact keyframes
+in [UI_FIDELITY.md](UI_FIDELITY.md#shake-and-reveal-input).
 
 ## Build and application query (service 70)
 

@@ -11,7 +11,7 @@ from typing import get_args, get_origin, get_type_hints
 from .content import EpisodeResources, digest
 from .games import GAMES, game_id
 from .engine import EngineAction, EngineState
-from .dialogue_animation import DialogueAnimation, DialoguePortrait
+from .dialogue_animation import DialogueAnimation, DialoguePortrait, DialogueHistory, EXPRESSION_MS
 from .background import BackgroundPan
 from .dialogue_notice import notice_lifetime
 from .relationships import RelationshipAnimation, RelationshipChange
@@ -171,15 +171,22 @@ class Session:
                 if action.name == 'dialogue':
                     self._prepare_dialogue(new_name=True)
                     self.engine.dialogue_animation = DialogueAnimation.start(
-                        action.details, self.engine.character_art_variants, self.engine.dialogue_animation)
-                else:
-                    self.engine.dialogue_animation = None
+                        action.details, self.engine.character_art_variants, self.engine.dialogue_animation,
+                        self.engine.dialogue_history)
+                # Native addUIElement covers the dialogue panel; removing the
+                # temporary panel returns to the same speaker/expression.
+                # Hidden dialogue does not tick. Only explicit teardown or a
+                # new scene discards it.
                 return action
             if request.kind == StopKind.HALT and self.engine.scheduled_scripts:
                 scene, _flag = self.engine.scheduled_scripts[-1]
                 program = self.resources.program(scene)
                 self.engine.scheduled_scripts.pop()
                 self.vm.load_next(program)
+                # runScript09 clears the old scene UI before loadScript09.
+                # The global hidden portrait position outlives that panel.
+                self.engine.dialogue_animation = None
+                self.engine.clear_scene_expressions()
                 self.scene, self.scene_loads = scene, self.scene_loads + 1
                 continue
             if request.kind == StopKind.BUDGET:
@@ -348,7 +355,11 @@ class Session:
         if self.pending and self.pending.name == 'vm_pause':
             return self.answer()
         if self.pending and self.pending.name == 'dialogue':
-            self.engine.dialogue_animation.tick(elapsed_ms)
+            motion = self.engine.dialogue_animation
+            motion.tick(elapsed_ms)
+            if motion.portrait is not None and motion.presentation_ms >= EXPRESSION_MS:
+                value = motion.expression & 255
+                self.engine.dialogue_history.expressions[motion.portrait.character_id] = value - 256 if value > 127 else value
             return self.pending
         if self.pending and self.pending.name == 'character_picker':
             self.engine.character_picker.tick(elapsed_ms)
@@ -397,7 +408,7 @@ class Session:
         return self.advance()
 
     def snapshot(self) -> dict:
-        return dict(format='exp-runtime-save', version=19,
+        return dict(format='exp-runtime-save', version=21,
                     content=self.resources.identity, scene=self.scene,
                     script_sha256=digest(self.vm.program.to_bytes()),
                     vm=self.vm.snapshot(), engine=asdict(self.engine),
@@ -408,9 +419,35 @@ class Session:
     @classmethod
     def from_snapshot(cls, resources: EpisodeResources, state: dict):
         try:
-            if state['format'] not in ('shs-runtime-save', 'exp-runtime-save') or state['version'] not in range(1, 20):
+            if state['format'] not in ('shs-runtime-save', 'exp-runtime-save') or state['version'] not in range(1, 22):
                 raise SaveError('Unsupported save format or version')
             legacy = state['version'] == 1
+            if state['version'] < 21:
+                state = deepcopy(state)
+                motion = state['engine'].get('dialogue_animation')
+                history = DialogueHistory()
+                if motion is not None:
+                    portrait = motion.get('portrait')
+                    expression = state['engine']['panel']['expression']
+                    mode = portrait['mode'] if portrait else 0
+                    history.anchor_mode = mode
+                    if portrait:
+                        byte = expression & 255
+                        history.expressions[portrait['character_id']] = byte - 256 if byte > 127 else byte
+                    defaults = dict(native_lifecycle=False, anchor_mode=mode, initial_portrait=portrait,
+                                    initial_expression=expression, expression=expression,
+                                    presentation_ms=2400, visuals_finished=False, housing_clipped=False)
+                    for key, value in defaults.items():
+                        motion.setdefault(key, value)
+                state['engine'].setdefault('dialogue_history', asdict(history))
+                if state.get('pending') and state['pending']['name'] == 'dialogue':
+                    details = state['pending']['details']
+                    details.setdefault('initial_expression', details['expression'])
+            if state['version'] < 20 and state['engine'].get('dialogue_animation') is not None:
+                state = deepcopy(state)
+                # The old frame was already full-sized. Preserve its text,
+                # clocks and VM without replaying the newly supported grow.
+                state['engine']['dialogue_animation']['box_grow'] = False
             if state['version'] < 19:
                 state = deepcopy(state)
                 # Preserve the older renderer's centered view until the next
@@ -484,6 +521,7 @@ class Session:
             engine.game_key = game_id(resources)
             engine.app_version = getattr(resources.library, 'app_info', {}).get('CFBundleVersion')
             engine.background_pan.validate()
+            engine.dialogue_history.validate()
             engine.speaker_names.validate()
             if engine.title_screen is not None:
                 engine.title_screen.validate()
@@ -611,7 +649,7 @@ class Session:
                 elif name == 'dialogue':
                     for key in ('text', 'raw_text', 'speaker'):
                         _typed_value(details[key], str)
-                    for key in ('character_id', 'expression', 'mode'):
+                    for key in ('character_id', 'expression', 'initial_expression', 'mode'):
                         _typed_value(details[key], int)
                     if legacy:
                         details = engine.present_dialogue(details['character_id'], details['expression'],
@@ -691,8 +729,12 @@ class Session:
                     if state['version'] >= 10 and not reflow_ipa and session.pending.details['page_end'] != saved_end:
                         raise SaveError('Saved dialogue page does not match its layout')
                     if state['version'] < 4:
+                        session.pending.details['initial_expression'] = session.pending.details['expression']
                         engine.dialogue_animation = DialogueAnimation.start(
-                            session.pending.details, engine.character_art_variants)
+                            session.pending.details, engine.character_art_variants,
+                            history=engine.dialogue_history)
+                        engine.dialogue_animation.native_lifecycle = False
+                        engine.dialogue_animation.box_grow = False
                         engine.dialogue_animation.settle()
                     if state['version'] < 6 and engine.dialogue_animation is not None:
                         engine.dialogue_animation.relationship = RelationshipAnimation(change, 0) if change else None
@@ -701,12 +743,23 @@ class Session:
             motion = engine.dialogue_animation
             if motion is not None:
                 motion.validate()
-                if not session.pending or session.pending.name not in ('dialogue', 'vm_pause'):
+                if not session.pending or session.pending.name in ('finished', 'episode_exit'):
                     raise SaveError('Dialogue animation does not match its pending screen')
+                if motion.native_lifecycle and motion.portrait is not None:
+                    expression = motion.expression if motion.presentation_ms >= EXPRESSION_MS else motion.initial_expression
+                    byte = expression & 255
+                    if (engine.dialogue_history.anchor_mode != motion.anchor_mode or
+                            engine.dialogue_history.expressions.get(motion.portrait.character_id) !=
+                            (byte - 256 if byte > 127 else byte)):
+                        raise SaveError('Dialogue expression does not match its portrait history')
             if session.pending and session.pending.name == 'dialogue':
                 details = session.pending.details
                 if (motion is None or motion.text_length != len(details['text']) - details['page_start']
                         or motion.portrait != DialoguePortrait.from_details(details, engine.character_art_variants)
+                        or motion.initial_portrait != DialoguePortrait.from_details(
+                            dict(details, expression=details['initial_expression']), engine.character_art_variants)
+                        or motion.expression != details['expression']
+                        or motion.initial_expression != details['initial_expression']
                         or (asdict(motion.relationship.change) if motion.relationship else None) != details['relationship']):
                     raise SaveError('Dialogue animation does not match its text or portrait')
             if (engine.word_game is not None) != bool(session.pending and session.pending.name == 'word_game'):
@@ -757,7 +810,7 @@ class Session:
                         raise SaveError('Choice stop is missing its builder or shuffle argument')
                 if session.pending.request.yield_id == 9 and len(session.pending.request.args) < 2:
                     raise SaveError('Survey stop is missing its submission arguments')
-                if (engine.panel.presentation_mode and
+                if (engine.dialogue_animation is None and engine.panel.presentation_mode and
                         (game_id(resources) == 'cod' or session.pending.request.yield_id in (14, 15, 21, 70, 76, 97))):
                     # Unsupported stops discarded their animation, but retained
                     # the visible panel. Recover its outgoing portrait identity
@@ -766,9 +819,16 @@ class Session:
                     previous = dict(visible_character_id=panel.character_id,
                                     presentation_mode=panel.presentation_mode,
                                     expression=panel.expression, theme=panel.theme)
+                    portrait = DialoguePortrait.from_details(previous, engine.character_art_variants)
                     engine.dialogue_animation = DialogueAnimation(
-                        0, portrait=DialoguePortrait.from_details(previous, engine.character_art_variants))
+                        0, portrait=portrait, initial_portrait=portrait,
+                        anchor_mode=portrait.mode if portrait else 0,
+                        expression=panel.expression, initial_expression=panel.expression)
                     engine.dialogue_animation.settle()
+                    if portrait is not None:
+                        engine.dialogue_history.anchor_mode = portrait.mode
+                        byte = panel.expression & 255
+                        engine.dialogue_history.expressions[portrait.character_id] = byte - 256 if byte > 127 else byte
                 session.pending = None
                 session.advance()
             return session
